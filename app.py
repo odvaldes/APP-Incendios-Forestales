@@ -129,6 +129,20 @@ with st.sidebar:
     st.header("Fuente de datos")
     wms_url = st.text_input("URL del servicio WMS", value=DEFAULT_WMS)
     timeout = 25
+    st.markdown(
+    """
+    • <a href="https://sni.gob.cl/storage/docs/Metodologia_RRD_290925.pdf" target="_blank">
+      Metodología RRD
+    </a><br/>
+    • <a href="https://sni.gob.cl/storage/docs/Manual_de_escalas_IRD_Incendios_Forestales_Sep2025.pdf" target="_blank">
+      Manual de escalas IRD – Incendios Forestales
+    </a><br/>
+    • <a href="https://sni.gob.cl/storage/docs/zip/PlanillasRRDD_2025.zip" target="_blank">
+      Planillas de cálculo IRD
+    </a>
+    """,
+        unsafe_allow_html=True
+)
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
     st.caption("Modo directo: lista y muestra capas exactamente como vienen del WMS (GetCapabilities).")
 
