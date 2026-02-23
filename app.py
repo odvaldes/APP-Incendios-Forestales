@@ -144,7 +144,7 @@ with st.sidebar:
         unsafe_allow_html=True
 )
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
-    st.caption("Modo directo: lista y muestra capas exactamente como vienen del WMS (GetCapabilities).")
+
 
     st.divider()
     st.header("🔎 Buscar dirección")
