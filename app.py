@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 Created on Wed Jan 21 10:34:42 2026
 @author: ovaldes
@@ -32,7 +32,10 @@ DEFAULT_WMS = "https://visor-grd.senapred.gob.cl/arcgis/services/SIIE/Amenaza_In
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 0.8rem; padding-bottom: 1.2rem; }
+      .block-container { 
+        padding-top: 3.5rem;   /* ⬅️ BAJA TODO EL CONTENIDO */
+        padding-bottom: 1.2rem; 
+      }
       h2 { margin-top: 0.6rem; margin-bottom: 0.35rem; }
       h3 { margin-top: 0.6rem; margin-bottom: 0.35rem; }
       .stAlert { margin-top: 0.35rem; margin-bottom: 0.35rem; }
@@ -45,17 +48,16 @@ st.markdown(
         line-height: 1.2;
         color: white;
       }
-      .bajo { background: #2e7d32; }      /* verde */
-      .medio { background: #f9a825; }     /* amarillo */
-      .alto { background: #ef6c00; }      /* naranjo */
-      .muyalto { background: #c62828; }   /* rojo */
+      .bajo { background: #2e7d32; }
+      .medio { background: #f9a825; }
+      .alto { background: #ef6c00; }
+      .muyalto { background: #c62828; }
       .muted { color: #6b7280; font-size: 0.9rem; }
       .tight { margin-top: 0.2rem; }
     </style>
     """,
     unsafe_allow_html=True
 )
-
 # =========================
 # HEADER CON LOGO
 # =========================
@@ -72,7 +74,7 @@ with col_title:
         unsafe_allow_html=True
     )
 with col_logo:
-    st.image("Logo/logo.png", width=100)
+    st.image("Logo/logo.png", width=130)
 
 # -----------------------------
 # SESSION STATE
@@ -588,6 +590,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# -----------------------------
+# RESULTADO
+# -----------------------------
 # -----------------------------
 # RESULTADO (PERSISTENTE)
 # -----------------------------
