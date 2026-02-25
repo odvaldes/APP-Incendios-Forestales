@@ -67,8 +67,8 @@ with col_title:
         """
         <div style='background-color:#003DA5; padding: 12px; border-radius: 6px;'>
             <h2 style='color:white; text-align:left; margin: 0;'>
-                🌍 Visor Amenaza Incendio 2025 - Índice de Riesgo de Desastres (IRD) MDSF
-            </h2>
+                🌍 Visor de Exposición a la Amenaza de Incendios Forestales 
+                </h2>
         </div>
         """,
         unsafe_allow_html=True
