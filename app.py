@@ -74,6 +74,7 @@ st.markdown(
       .medio { background: #f9a825; }
       .alto { background: #ef6c00; }
       .muyalto { background: #c62828; }
+      .sindato { background: #9ca3af; }
       .muted { color: #6b7280; font-size: 0.9rem; }
       .tight { margin-top: 0.2rem; }
 
@@ -463,7 +464,7 @@ def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray):
     pixels = arr[mask_bool]
     pixels = pixels[pixels[:, 3] > 0]
     if pixels.size == 0:
-        return "Muy Alto"
+        return "Sin dato"
 
     rgb = pixels[:, :3].astype(np.uint8)
     labels = classify_scale_from_rgb(rgb)
@@ -472,11 +473,11 @@ def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray):
     counts = {c: int(np.sum(labels == c)) for c in cats}
     total = sum(counts.values())
     if total == 0:
-        return "Muy Alto"
+        return "Sin dato"
     return max(counts, key=lambda k: counts[k])
 
 def badge_html(level: str) -> str:
-    cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto"}.get(level, "muted")
+    cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin dato": "sindato"}.get(level, "muted")
     return f'<span class="badge {cls}">{level}</span>'
 
 # -----------------------------
@@ -661,7 +662,7 @@ st.markdown(
       <span class="badge medio">Medio</span>
       <span class="badge alto">Alto</span>
       <span class="badge muyalto">Muy Alto</span>
-      <span class="badge" style="background:#9ca3af;">Sin dato</span>
+      <span class="badge sindato">Sin dato</span>
     </div>
     <div class="muted" style="margin-top:0.35rem;">
       Interpretación: la exposición del polígono se asigna por <b>mayoría de pixeles</b> dentro del polígono, usando la simbología de colores.
