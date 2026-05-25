@@ -148,49 +148,74 @@ with st.sidebar:
 
     st.divider()
     st.header("🔎 Buscar dirección")
+    
     addr = st.text_input(
         "Dirección / lugar (Chile)",
         value="",
         placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago"
     )
+    
     colA, colB = st.columns([1, 1])
     with colA:
         do_search = st.button("Buscar", use_container_width=True)
     with colB:
         clear_search = st.button("Limpiar", use_container_width=True)
 
+    # Limpiar búsqueda
     if clear_search:
         st.session_state.search_point = None
         st.session_state.search_label = None
+        st.session_state.search_results = None  # ✅ NUEVO: Limpiar resultados guardados
         st.rerun()
 
+    # Ejecutar búsqueda y GUARDAR resultados
     if do_search and addr.strip():
         try:
             results = geocode_nominatim(addr.strip(), limit=6)
             if not results:
                 st.warning("No se encontraron resultados. Prueba con más detalle (comuna/ciudad).")
+                st.session_state.search_results = None
             else:
-                options_geo = [
-                    f'{r.get("display_name","(sin nombre)")}  [lat={r.get("lat")}, lon={r.get("lon")}]'
-                    for r in results
-                ]
-                chosen = st.selectbox("Resultados", options_geo, index=0)
-                idx = options_geo.index(chosen)
-                lat = float(results[idx]["lat"])
-                lon = float(results[idx]["lon"])
-
-                st.session_state.search_point = (lat, lon)
-                st.session_state.search_label = results[idx].get("display_name", addr.strip())
-
-                # ✅ NO usar zoom 30 (Leaflet no llega); usa 14 aprox
-                st.session_state.map_center = [lat, lon]
-                st.session_state.map_zoom = 14
-
-                st.success("Ubicación centrada en el mapa ✅")
-                st.rerun()
+                st.session_state.search_results = results # ✅ NUEVO: GUARDAR resultados en session_state
+                st.success(f"✅ Se encontraron {len(results)} resultado(s)")
         except Exception as e:
             st.error("Error al buscar dirección.")
             st.exception(e)
+            st.session_state.search_results = None
+
+    # ✅ NUEVO: MOSTRAR selectbox SIEMPRE que haya resultados guardados
+    if st.session_state.get("search_results"):
+        results = st.session_state.search_results
+        
+        options_geo = [
+            f'{r.get("display_name","(sin nombre)")}  [lat={r.get("lat")}, lon={r.get("lon")}]'
+            for r in results
+        ]
+        
+        # ✅ El selectbox ahora persiste entre reruns
+        chosen = st.selectbox(
+            "Resultados de búsqueda",
+            options_geo,
+            index=0,
+            key="selectbox_geocode"  # ✅ Key para mantener estado
+        )
+        
+        # ✅ Botón para aplicar la selección
+        if st.button("📍 Ir a esta ubicación", use_container_width=True):
+            idx = options_geo.index(chosen)
+            lat = float(results[idx]["lat"])
+            lon = float(results[idx]["lon"])
+
+            st.session_state.search_point = (lat, lon)
+            st.session_state.search_label = results[idx].get("display_name", addr.strip())
+
+            # ✅ NO usar zoom 30 (Leaflet no llega); usa 14 aprox
+            st.session_state.map_center = [lat, lon]
+            st.session_state.map_zoom = 14
+
+            st.success("Ubicación centrada en el mapa ✅")
+            st.rerun()
+
     # ============================================================
     # 🖨️ BOTÓN: Guardar print (equivale a Ctrl+P -> Guardar como PDF)
     # ============================================================
