@@ -54,6 +54,13 @@ st.markdown(
       .muyalto { background: #c62828; }
       .muted { color: #6b7280; font-size: 0.9rem; }
       .tight { margin-top: 0.2rem; }
+
+      /* Para ocultar el sidebar al Guardar print */
+      @media print {
+        section[data-testid="stSidebar"] {
+          display: none !important;
+        }
+      }
     </style>
     """,
     unsafe_allow_html=True
