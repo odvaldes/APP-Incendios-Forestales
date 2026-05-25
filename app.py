@@ -27,6 +27,28 @@ st.set_page_config(page_title="Visor WMS SENAPRED", layout="wide")
 DEFAULT_WMS = "https://visor-grd.senapred.gob.cl/arcgis/services/SIIE/Amenaza_Incendio_2025/MapServer/WMSServer"
 
 # =========================
+# MAPEO DE REGIONES DE CHILE
+# =========================
+REGIONES_CHILE = {
+    "01": "Región de Tarapacá",
+    "02": "Región de Antofagasta",
+    "03": "Región de Atacama",
+    "04": "Región de Coquimbo",
+    "05": "Región de Valparaíso",
+    "06": "Región de O'Higgins",
+    "07": "Región del Maule",
+    "08": "Región del Biobío",
+    "09": "Región de La Araucanía",
+    "10": "Región de Los Lagos",
+    "11": "Región de Aysén",
+    "12": "Región de Magallanes",
+    "13": "Región Metropolitana",
+    "14": "Región de Los Ríos",
+    "15": "Región de Arica y Parinacota",
+    "16": "Región de Ñuble",
+}
+
+# =========================
 # CSS PRO
 # =========================
 st.markdown(
@@ -297,6 +319,18 @@ def parse_layers_from_capabilities(xml_text: str):
             seen.add(x["name"])
     return dedup
 
+# ✅ NUEVO: función para mostrar el nombre de las regiones
+def format_layer_title(title: str) -> str:
+
+    # Verificar patrón R## al inicio
+    if len(title) >= 3 and title[0] == 'R' and title[1:3].isdigit():
+        num = title[1:3]
+        if num in REGIONES_CHILE:
+            return REGIONES_CHILE[num]
+    
+    # Si no coincide, retornar título original
+    return title
+
 # -----------------------------
 # Geometría + GetMap + máscara + clasificación por color
 # -----------------------------
@@ -539,7 +573,7 @@ if not layers:
         st.code((caps or "")[:1500])
     st.stop()
 
-options = [f'{it["title"]} — ({it["name"]})' for it in layers]
+options = [f'{format_layer_title(it["title"])} — ({it["name"]})' for it in layers]
 selected = st.multiselect(
     "Selecciona una o más capas para visualizar",
     options=options,
