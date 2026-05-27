@@ -469,12 +469,23 @@ def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray):
     rgb = pixels[:, :3].astype(np.uint8)
     labels = classify_scale_from_rgb(rgb)
 
-    cats = ["Bajo", "Medio", "Alto", "Muy Alto"]
-    counts = {c: int(np.sum(labels == c)) for c in cats}
-    total = sum(counts.values())
-    if total == 0:
+    cats = {"Bajo": 1, "Medio": 2, "Alto": 3, "Muy Alto": 4}
+    
+    # Mapear labels a prioridades
+    priorities = np.array([cats.get(label, 0) for label in labels])
+    
+    # Obtener la máxima prioridad
+    max_priority = np.max(priorities)
+    
+    if max_priority == 0:
         return "Sin dato"
-    return max(counts, key=lambda k: counts[k])
+    
+    # Retornar la categoría con la máxima prioridad
+    for cat, priority in cats.items():
+        if priority == max_priority:
+            return cat
+    
+    return "Sin dato"
 
 def badge_html(level: str) -> str:
     cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin dato": "sindato"}.get(level, "muted")
