@@ -416,25 +416,26 @@ def rgb_to_hsv_np(rgb_arr_uint8: np.ndarray) -> np.ndarray:
     v = cmax
     return np.stack([h, s, v], axis=1)
 
-def classify_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> np.ndarray:
+# ✅ Modificada: Función para devolver la escala de mayor riesgo según rgb.
+def find_highest_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> int:
     rgb = rgb_arr_uint8.astype(np.float32)
 
     anchors = {
-        "Bajo":     np.array([ 76, 175,  80], dtype=np.float32),
-        "Medio":    np.array([255, 235,  59], dtype=np.float32),
-        "Alto":     np.array([255, 165,   0], dtype=np.float32),
-        "Muy Alto": np.array([220,  50,  50], dtype=np.float32),
+        1: np.array([ 76, 175,  80], dtype=np.float32),  # Bajo
+        2: np.array([255, 235,  59], dtype=np.float32),  # Medio
+        3: np.array([255, 165,   0], dtype=np.float32),  # Alto
+        4: np.array([220,  50,  50], dtype=np.float32),  # Muy alto
     }
 
+    # Descartar pixeles muy oscuros o pocos saturados
     r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
     mx = np.maximum(np.maximum(r, g), b)
     mn = np.minimum(np.minimum(r, g), b)
     sat = (mx - mn) / (mx + 1e-6)
     valid = (mx > 55) & (sat > 0.10)
 
-    out = np.full(rgb.shape[0], "Sin dato", dtype=object)
     if not np.any(valid):
-        return out
+        return 0
 
     rgbv = rgb[valid]
 
@@ -453,39 +454,26 @@ def classify_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> np.ndarray:
     is_red = ((h >= 345) | (h < 18)) & (s > 0.20) & (v > 0.20)
     is_orange = (h >= 18) & (h < 60) & (s > 0.18) & (v > 0.18)
 
-    assigned[(assigned == "Muy Alto") & is_orange] = "Alto"
-    assigned[(assigned == "Alto") & is_red] = "Muy Alto"
+    assigned[(assigned == 4) & is_orange] = 3
+    assigned[(assigned == 3) & is_red] = 4
 
-    out[valid] = assigned
-    return out
+    return np.unique(assigned)[-1]
 
-def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray):
+# ✅ Modificada: Función para devolver la escala de mayor riesgo dentro de un polígono.
+def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray) -> str:
     arr = np.array(img_rgba)
     pixels = arr[mask_bool]
     pixels = pixels[pixels[:, 3] > 0]
+
     if pixels.size == 0:
         return "Sin dato"
+    
+    cats = ["Sin dato", "Bajo", "Medio", "Alto", "Muy Alto"]
 
     rgb = pixels[:, :3].astype(np.uint8)
-    labels = classify_scale_from_rgb(rgb)
+    highest_priority = find_highest_scale_from_rgb(rgb)
 
-    cats = {"Bajo": 1, "Medio": 2, "Alto": 3, "Muy Alto": 4}
-    
-    # Mapear labels a prioridades
-    priorities = np.array([cats.get(label, 0) for label in labels])
-    
-    # Obtener la máxima prioridad
-    max_priority = np.max(priorities)
-    
-    if max_priority == 0:
-        return "Sin dato"
-    
-    # Retornar la categoría con la máxima prioridad
-    for cat, priority in cats.items():
-        if priority == max_priority:
-            return cat
-    
-    return "Sin dato"
+    return cats[highest_priority]
 
 def badge_html(level: str) -> str:
     cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin dato": "sindato"}.get(level, "muted")
