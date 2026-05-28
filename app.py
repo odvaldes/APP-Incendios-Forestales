@@ -14,10 +14,13 @@ from streamlit_folium import st_folium
 
 import numpy as np
 from PIL import Image, ImageDraw
-from shapely.geometry import shape, Polygon, MultiPolygon
+from shapely.geometry import shape, Polygon, MultiPolygon, mapping
 from io import BytesIO
 import warnings
 from typing import Union, List, Dict
+
+from shapely.ops import transform
+from pyproj import CRS, Transformer # Requerimiento nuevo agregado 'pyproj'
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -133,6 +136,10 @@ if "search_label" not in st.session_state:
 # ✅ NUEVO: guardar resultado de exposición para que persista en reruns (y se imprima)
 if "resultado_exposicion" not in st.session_state:
     st.session_state.resultado_exposicion = None  # dict con dominante, capa, etc.
+
+# ✅ NUEVO: guardar la figura del buffer en reruns.
+if "polygon_buffer_geojson" not in st.session_state:
+    st.session_state.polygon_buffer_geojson = None
 
 # -----------------------------
 # BUSCADOR DE DIRECCIONES (Nominatim / OSM)
@@ -479,18 +486,65 @@ def badge_html(level: str) -> str:
     cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin dato": "sindato"}.get(level, "muted")
     return f'<span class="badge {cls}">{level}</span>'
 
+
+# ✅ NUEVO: 2 funciones relacionadas con la creación del buffer del polígono.
+def utm_epsg_from_lonlat(lon: float, lat: float) -> int:
+    zone = int((lon + 180) // 6) + 1
+    return (32600 + zone) if lat >= 0 else (32700 + zone)
+
+def buffer_feature_100m(feature: dict) -> dict:
+    """Recibe un Feature GeoJSON en EPSG:4326 y devuelve otro Feature GeoJSON bufferizado en metros."""
+    geom_ll = shape(feature["geometry"])  # shapely geom en lon/lat
+
+    # CRS métrico local (UTM) según centroide
+    c = geom_ll.centroid
+    epsg_utm = utm_epsg_from_lonlat(c.x, c.y)
+
+    to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg_utm}", always_xy=True).transform
+    to_ll  = Transformer.from_crs(f"EPSG:{epsg_utm}", "EPSG:4326", always_xy=True).transform
+
+    geom_utm = transform(to_utm, geom_ll)
+    geom_buf_utm = geom_utm.buffer(100)
+    geom_buf_ll = transform(to_ll, geom_buf_utm)
+
+    return {
+        "type": "Feature",
+        "geometry": mapping(geom_buf_ll),
+    }
+
 # -----------------------------
-# MAPA (FIX anti-desaparición)
+# MAPA (FIX anti-desaparición) 
 # -----------------------------
+# MODIFICADO: función cambiada para mostrar el polígono original + el buffer.
 def add_saved_polygon(m: folium.Map):
-    feat = st.session_state.polygon_geojson or st.session_state.polygon_draft
-    if not feat:
-        return
+    # 1) Polígono original (confirmado o borrador)
+    original = st.session_state.polygon_geojson or st.session_state.polygon_draft
+    if original:
+        folium.GeoJson(
+            original,
+            name="Polígono (original)",
+            style_function=lambda _: {
+                "color": "#111827",
+                "weight": 2,
+                "fillColor": "#60a5fa",
+                "fillOpacity": 0.20,
+            },
+        ).add_to(m)
 
-    def style_fn(_):
-        return {"color": "#111827", "weight": 2, "fillColor": "#60a5fa", "fillOpacity": 0.25}
-
-    folium.GeoJson(feat, name="Polígono proyecto", style_function=style_fn).add_to(m)
+    # 2) Buffer (solo si existe)
+    buf = st.session_state.get("polygon_buffer_geojson")
+    if buf:
+        folium.GeoJson(
+            buf,
+            name="Buffer 100 m",
+            style_function=lambda _: {
+                "color": "#dc2626",
+                "weight": 2,
+                "dashArray": "6,4",
+                "fillColor": "#dc2626",
+                "fillOpacity": 0.08,
+            },
+        ).add_to(m)
 
 def build_map(selected_layer_names, opacity: float, wms_url: str, center, zoom, search_point=None, search_label=None):
     m = folium.Map(location=center, zoom_start=int(zoom), control_scale=True, tiles=None, max_zoom=22)
@@ -610,8 +664,7 @@ if map_state:
     candidate = last_active or (all_drawings[-1] if all_drawings else None)
     if candidate:
         st.session_state.polygon_draft = candidate
-        if st.session_state.polygon_ok:
-            st.session_state.polygon_geojson = candidate
+
 
 # -----------------------------
 # POLÍGONO
@@ -630,6 +683,7 @@ if clear_clicked:
     st.session_state.polygon_ok = False
     st.session_state.polygon_geojson = None
     st.session_state.polygon_draft = None
+    st.session_state.polygon_buffer_geojson = None
     st.rerun()
 
 if ok_clicked:
@@ -647,6 +701,12 @@ if ok_clicked:
     else:
         st.session_state.polygon_geojson = st.session_state.polygon_draft
         st.session_state.polygon_ok = True
+        
+        # ✅ Crear buffer DESPUÉS de confirmar el polígono
+        st.session_state.polygon_buffer_geojson = buffer_feature_100m(
+            st.session_state.polygon_geojson
+        )
+        
         st.success("✅ Polígono confirmado (manteniendo zoom).")
         st.rerun()
 
@@ -664,7 +724,8 @@ st.markdown(
       <span class="badge sindato">Sin dato</span>
     </div>
     <div class="muted" style="margin-top:0.35rem;">
-      Interpretación: la exposición del polígono se asigna por <b>mayoría de pixeles</b> dentro del polígono, usando la simbología de colores.
+      Interpretación: la exposición se determina por el <b>nivel máximo de riesgo encontrado</b> 
+      dentro del área de análisis (polígono original + buffer de 100m).
     </div>
     """,
     unsafe_allow_html=True
@@ -690,7 +751,8 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
         # Botón calcula y GUARDA en session_state
         if st.button("Calcular exposición", type="primary"):
             try:
-                poly = geojson_to_shapely(st.session_state.polygon_geojson)
+                feature_for_analysis = st.session_state.polygon_buffer_geojson or st.session_state.polygon_geojson
+                poly = geojson_to_shapely(feature_for_analysis)
                 bbox = padded_bbox(poly, pad_ratio=0.03)
 
                 size_px = 512
