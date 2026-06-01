@@ -20,7 +20,7 @@ import warnings
 from typing import Union, List, Dict
 
 from shapely.ops import transform
-from pyproj import CRS, Transformer # Requerimiento nuevo agregado 'pyproj'
+from pyproj import Transformer # Requerimiento nuevo agregado 'pyproj'
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -33,22 +33,22 @@ DEFAULT_WMS = "https://visor-grd.senapred.gob.cl/arcgis/services/SIIE/Amenaza_In
 # MAPEO DE REGIONES DE CHILE
 # =========================
 REGIONES_CHILE = {
-    "01": "Región de Tarapacá",
-    "02": "Región de Antofagasta",
-    "03": "Región de Atacama",
-    "04": "Región de Coquimbo",
-    "05": "Región de Valparaíso",
-    "06": "Región de O'Higgins",
-    "07": "Región del Maule",
-    "08": "Región del Biobío",
-    "09": "Región de La Araucanía",
-    "10": "Región de Los Lagos",
-    "11": "Región de Aysén",
-    "12": "Región de Magallanes",
-    "13": "Región Metropolitana",
-    "14": "Región de Los Ríos",
-    "15": "Región de Arica y Parinacota",
-    "16": "Región de Ñuble",
+    "0": "R. de Magallanes",
+    "1": "R. de Aysén",
+    "2": "R. de Los Lagos",
+    "3": "R. de Los Ríos",
+    "4": "R. de La Araucanía",
+    "5": "R. del Biobío",
+    "6": "R. de Ñuble",
+    "7": "R. del Maule",
+    "8": "R. de O'Higgins",
+    "9": "R. Metropolitana",
+    "10": "R. de Valparaíso",
+    "11": "R. de Coquimbo",
+    "12": "R. de Atacama",
+    "13": "R. de Antofagasta",
+    "14": "R. de Tarapacá",
+    "15": "R. de Arica y Parinacota",
 }
 
 # =========================
@@ -73,11 +73,11 @@ st.markdown(
         line-height: 1.2;
         color: white;
       }
-      .bajo { background: #2e7d32; }
-      .medio { background: #f9a825; }
-      .alto { background: #ef6c00; }
-      .muyalto { background: #c62828; }
-      .sindato { background: #9ca3af; }
+      .bajo { background: #2E7D32; }
+      .medio { background: #F9A825; }
+      .alto { background: #Ef6C00; }
+      .muyalto { background: #F00E02; }
+      .sindato { background: #9CA3AF; }
       .muted { color: #6b7280; font-size: 0.9rem; }
       .tight { margin-top: 0.2rem; }
 
@@ -181,7 +181,6 @@ with st.sidebar:
         unsafe_allow_html=True
 )
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
-
 
     st.divider()
     st.header("🔎 Buscar dirección")
@@ -289,6 +288,17 @@ with st.sidebar:
 # -----------------------------
 # FUNCIONES WMS (capabilities)
 # -----------------------------
+# ✅ NUEVO: función para mostrar el nombre de las regiones
+def format_layer_title(name: int) -> str:
+
+    # Verificar que sea un dígito
+    if name.isdigit():
+        if name in REGIONES_CHILE:
+            return REGIONES_CHILE[name]
+    
+    # Si no coincide, retornar name (número) original
+    return f"Región name: {name}"
+
 @st.cache_data(show_spinner=False, ttl=1800)
 def fetch_capabilities(url: str, timeout_s: int) -> str:
     cap_url = f"{url}?SERVICE=WMS&REQUEST=GetCapabilities"
@@ -314,10 +324,9 @@ def parse_layers_from_capabilities(xml_text: str):
     out = []
     for lyr in top_layer.findall(f".//{ns}Layer"):
         name_el = lyr.find(f"{ns}Name")
-        title_el = lyr.find(f"{ns}Title")
         if name_el is not None and name_el.text:
             nm = name_el.text.strip()
-            tt = title_el.text.strip() if (title_el is not None and title_el.text) else nm
+            tt = format_layer_title(nm)
             out.append({"name": nm, "title": tt})
 
     seen, dedup = set(), []
@@ -326,18 +335,6 @@ def parse_layers_from_capabilities(xml_text: str):
             dedup.append(x)
             seen.add(x["name"])
     return dedup
-
-# ✅ NUEVO: función para mostrar el nombre de las regiones
-def format_layer_title(title: str) -> str:
-
-    # Verificar patrón R## al inicio
-    if len(title) >= 3 and title[0] == 'R' and title[1:3].isdigit():
-        num = title[1:3]
-        if num in REGIONES_CHILE:
-            return REGIONES_CHILE[num]
-    
-    # Si no coincide, retornar título original
-    return title
 
 # -----------------------------
 # Geometría + GetMap + máscara + clasificación por color
@@ -542,11 +539,11 @@ def add_saved_polygon(m: folium.Map):
                 "weight": 2,
                 "dashArray": "6,4",
                 "fillColor": "#dc2626",
-                "fillOpacity": 0.08,
+                "fillOpacity": 0.14,
             },
         ).add_to(m)
 
-def build_map(selected_layer_names, opacity: float, wms_url: str, center, zoom, search_point=None, search_label=None):
+def build_map(selected_layer, opacity: float, wms_url: str, center, zoom, search_point=None, search_label=None):
     m = folium.Map(location=center, zoom_start=int(zoom), control_scale=True, tiles=None, max_zoom=22)
 
     folium.TileLayer(
@@ -567,11 +564,11 @@ def build_map(selected_layer_names, opacity: float, wms_url: str, center, zoom, 
         max_zoom=22
     ).add_to(m)
 
-    for lyr in selected_layer_names or []:
+    for lyr in selected_layer or []:
         folium.raster_layers.WmsTileLayer(
             url=wms_url,
-            name=f"WMS: {lyr}",
-            layers=lyr,
+            name=lyr["title"],
+            layers=lyr["name"],
             fmt="image/png",
             transparent=True,
             version="1.3.0",
@@ -627,13 +624,13 @@ if not layers:
         st.code((caps or "")[:1500])
     st.stop()
 
-options = [f'{format_layer_title(it["title"])} — ({it["name"]})' for it in layers]
+options = [f'{it["title"]} — ({it["name"]})' for it in layers]
 selected = st.multiselect(
     "Selecciona una o más capas para visualizar",
     options=options,
     default=options[:1] if options else []
 )
-selected_layer_names = [layers[options.index(s)]["name"] for s in selected] if selected else []
+selected_layer = [layers[options.index(s)] for s in selected] if selected else []
 
 # -----------------------------
 # MAPA
@@ -641,7 +638,7 @@ selected_layer_names = [layers[options.index(s)]["name"] for s in selected] if s
 st.subheader("Mapa")
 
 m = build_map(
-    selected_layer_names,
+    selected_layer,
     opacity,
     wms_url,
     st.session_state.map_center,
@@ -738,12 +735,13 @@ st.markdown(
 # RESULTADO (PERSISTENTE)
 # -----------------------------
 if st.session_state.polygon_ok and st.session_state.polygon_geojson:
-    if not selected_layer_names:
+    if not selected_layer:
         st.warning("Selecciona al menos una capa WMS para calcular exposición.")
     else:
         layer_for_analysis = st.selectbox(
             "Capa a analizar",
-            selected_layer_names,
+            selected_layer,
+            format_func=lambda x: x["title"],
             index=0,
             key="layer_for_analysis"
         )
@@ -756,7 +754,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 bbox = padded_bbox(poly, pad_ratio=0.03)
 
                 size_px = 512
-                img = wms_getmap_png(wms_url, layer_for_analysis, bbox, size_px, timeout)
+                img = wms_getmap_png(wms_url, layer_for_analysis["name"], bbox, size_px, timeout)
                 mask = polygon_mask_in_bbox(poly, bbox, size_px, size_px)
 
                 dominante = predominant_scale_in_polygon(img, mask)
@@ -764,7 +762,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 # ✅ Guardar resultado para que NO se pierda al imprimir / rerun
                 st.session_state.resultado_exposicion = {
                     "dominante": dominante,
-                    "layer": layer_for_analysis,
+                    "layer": layer_for_analysis["title"],
                 }
 
                 st.success("✅ Exposición calculada y guardada.")
