@@ -543,6 +543,42 @@ def add_saved_polygon(m: folium.Map):
             },
         ).add_to(m)
 
+def add_exposure_legend(m: folium.Map):
+    legend_html = """
+    <div style="
+        position: fixed;
+        bottom: 62px;
+        left: 12px;
+        z-index: 9999;
+        background-color: white;
+        background-clip: padding-box;
+        padding: 10px 10px;
+        border: 2px solid rgba(0,0,0,0.3);
+        border-radius: 6px;
+        font-size: 13px;
+        ">
+      <div style="font-weight:700; color: black; margin-bottom:6px;">Exposición</div>
+
+      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+        <span style="width:14px; height:14px; background:#AACEAC; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
+        Bajo
+      </div>
+      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+        <span style="width:14px; height:14px; background:#F1FB7B; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
+        Medio
+      </div>
+      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+        <span style="width:14px; height:14px; background:#F7A248; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
+        Alto
+      </div>
+      <div style="display:flex; align-items:center; color: black">
+        <span style="width:14px; height:14px; background:#F0261C; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
+        Muy Alto
+      </div>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
+
 def build_map(selected_layer, opacity: float, wms_url: str, center, zoom, search_point=None, search_label=None):
     m = folium.Map(location=center, zoom_start=int(zoom), control_scale=True, tiles=None, max_zoom=22)
 
@@ -595,6 +631,7 @@ def build_map(selected_layer, opacity: float, wms_url: str, center, zoom, search
     ).add_to(m)
 
     folium.LayerControl(collapsed=False).add_to(m)
+    add_exposure_legend(m)
     return m
 
 # -----------------------------
