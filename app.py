@@ -52,6 +52,16 @@ REGIONES_CHILE = {
 }
 
 # =========================
+# COLORES RGB ANCLA
+# =========================
+ANCHORS_RGB = {
+        1: np.array([ 76, 175,  80], dtype=np.float32),  # Bajo
+        2: np.array([255, 235,  59], dtype=np.float32),  # Medio
+        3: np.array([255, 165,   0], dtype=np.float32),  # Alto
+        4: np.array([220,  50,  50], dtype=np.float32),  # Muy alto
+    }
+
+# =========================
 # CSS PRO
 # =========================
 st.markdown(
@@ -179,7 +189,7 @@ with st.sidebar:
     </a>
     """,
         unsafe_allow_html=True
-)
+    )
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
 
     st.divider()
@@ -306,6 +316,7 @@ def fetch_capabilities(url: str, timeout_s: int) -> str:
     r.raise_for_status()
     return r.text
 
+@st.cache_data(show_spinner=False, ttl=1800)
 def parse_layers_from_capabilities(xml_text: str):
     root = ET.fromstring(xml_text)
 
@@ -424,13 +435,6 @@ def rgb_to_hsv_np(rgb_arr_uint8: np.ndarray) -> np.ndarray:
 def find_highest_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> int:
     rgb = rgb_arr_uint8.astype(np.float32)
 
-    anchors = {
-        1: np.array([ 76, 175,  80], dtype=np.float32),  # Bajo
-        2: np.array([255, 235,  59], dtype=np.float32),  # Medio
-        3: np.array([255, 165,   0], dtype=np.float32),  # Alto
-        4: np.array([220,  50,  50], dtype=np.float32),  # Muy alto
-    }
-
     # Descartar pixeles muy oscuros o pocos saturados
     r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
     mx = np.maximum(np.maximum(r, g), b)
@@ -444,7 +448,7 @@ def find_highest_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> int:
     rgbv = rgb[valid]
 
     dists, labels = [], []
-    for k, a in anchors.items():
+    for k, a in ANCHORS_RGB.items():
         dists.append(np.sum((rgbv - a) ** 2, axis=1))
         labels.append(k)
 
@@ -543,38 +547,50 @@ def add_saved_polygon(m: folium.Map):
             },
         ).add_to(m)
 
+# ✅ NUEVO: Leyenda de cada color de exposición en el mapa.
 def add_exposure_legend(m: folium.Map):
     legend_html = """
     <div style="
         position: fixed;
         bottom: 62px;
-        left: 12px;
+        left: 10px;
         z-index: 9999;
         background-color: white;
         background-clip: padding-box;
         padding: 10px 10px;
         border: 2px solid rgba(0,0,0,0.3);
         border-radius: 6px;
-        font-size: 13px;
+        font-size: 14px;
         ">
-      <div style="font-weight:700; color: black; margin-bottom:6px;">Exposición</div>
+        
+        <div style="font-weight:700; color: black; text-align: center;">Exposición</div>
+        
+        <hr style="margin: 6px -10px; border-top: 1px solid #000000;">
 
-      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
-        <span style="width:14px; height:14px; background:#AACEAC; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
-        Bajo
-      </div>
-      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
-        <span style="width:14px; height:14px; background:#F1FB7B; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
-        Medio
-      </div>
-      <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
-        <span style="width:14px; height:14px; background:#F7A248; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
-        Alto
-      </div>
-      <div style="display:flex; align-items:center; color: black">
-        <span style="width:14px; height:14px; background:#F0261C; display:inline-block; margin-right:8px; border:1px solid #111827;"></span>
-        Muy Alto
-      </div>
+        <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+            <svg width="17" height="17" style="margin-right:8px;">
+            <rect x="0" y="0" width="17" height="17" fill="#AACEAC" stroke="#111827" stroke-width="1"/>
+            </svg>
+            Bajo
+        </div>
+        <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+            <svg width="17" height="17" style="margin-right:8px;">
+            <rect x="0" y="0" width="17" height="17" fill="#F1FB7B" stroke="#111827" stroke-width="1"/>
+            </svg>
+            Medio
+        </div>
+        <div style="display:flex; align-items:center; margin-bottom:4px; color: black">
+            <svg width="17" height="17" style="margin-right:8px;">
+            <rect x="0" y="0" width="17" height="17" fill="#F7A248" stroke="#111827" stroke-width="1"/>
+            </svg>
+            Alto
+        </div>
+        <div style="display:flex; align-items:center; color: black">
+            <svg width="17" height="17" style="margin-right:8px;">
+            <rect x="0" y="0" width="17" height="17" fill="#F0261C" stroke="#111827" stroke-width="1"/>
+            </svg>
+            Muy Alto
+        </div>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
