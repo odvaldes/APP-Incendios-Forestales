@@ -192,9 +192,15 @@ with st.sidebar:
     """,
         unsafe_allow_html=True
     )
+    st.divider()
+
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
 
+    # ✅ NUEVO: slider para escoger el tamaño del buffer (por defecto son 100 metros)
+    metros_buff = st.slider("Tamaño del Buffer (metros)", 0, 300, 100, 5)
+
     st.divider()
+
     st.header("🔎 Buscar dirección")
 
     # Formulario para buscar dirección.
@@ -501,7 +507,7 @@ def utm_epsg_from_lonlat(lon: float, lat: float) -> int:
     zone = int((lon + 180) // 6) + 1
     return (32600 + zone) if lat >= 0 else (32700 + zone)
 
-def buffer_feature_100m(feature: dict) -> dict:
+def buffer_feature_100m(feature: dict, metros: int) -> dict:
     """Recibe un Feature GeoJSON en EPSG:4326 y devuelve otro Feature GeoJSON bufferizado en metros."""
     geom_ll = shape(feature["geometry"])  # shapely geom en lon/lat
 
@@ -513,7 +519,7 @@ def buffer_feature_100m(feature: dict) -> dict:
     to_ll  = Transformer.from_crs(f"EPSG:{epsg_utm}", "EPSG:4326", always_xy=True).transform
 
     geom_utm = transform(to_utm, geom_ll)
-    geom_buf_utm = geom_utm.buffer(100)
+    geom_buf_utm = geom_utm.buffer(metros)
     geom_buf_ll = transform(to_ll, geom_buf_utm)
 
     return {
@@ -731,7 +737,7 @@ st.subheader("Polígono del proyecto")
 
 btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2], gap="small")
 with btn_col1:
-    ok_clicked = st.button("🟢 OK polígono", use_container_width=True)
+    ok_clicked = st.button("✅ OK polígono", use_container_width=True)
 with btn_col2:
     clear_clicked = st.button("🧹 Limpiar", use_container_width=True)
 with btn_col3:
@@ -762,7 +768,8 @@ if ok_clicked:
         
         # ✅ Crear buffer DESPUÉS de confirmar el polígono
         st.session_state.polygon_buffer_geojson = buffer_feature_100m(
-            st.session_state.polygon_geojson
+            st.session_state.polygon_geojson,
+            metros_buff
         )
         
         st.success("✅ Polígono confirmado (manteniendo zoom).")
