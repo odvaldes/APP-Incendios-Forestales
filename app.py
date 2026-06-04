@@ -143,6 +143,8 @@ if "search_point" not in st.session_state:
     st.session_state.search_point = None  # (lat, lon)
 if "search_label" not in st.session_state:
     st.session_state.search_label = None
+if "search_addr" not in st.session_state: # ✅ NUEVO: para guardar la dirección que se busca 
+    st.session_state.search_addr = ""
 # ✅ NUEVO: guardar resultado de exposición para que persista en reruns (y se imprima)
 if "resultado_exposicion" not in st.session_state:
     st.session_state.resultado_exposicion = None  # dict con dominante, capa, etc.
@@ -194,24 +196,30 @@ with st.sidebar:
 
     st.divider()
     st.header("🔎 Buscar dirección")
+
+    # Formulario para buscar dirección.
+    with st.form(key="buscar_direccion", border=False):
     
-    addr = st.text_input(
-        "Dirección / lugar (Chile)",
-        value="",
-        placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago"
-    )
+        st.session_state.search_addr = st.text_input(
+            "Dirección / lugar (Chile)",
+            value=st.session_state.search_addr,
+            placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago"
+        )
+
+        addr = st.session_state.search_addr
     
-    colA, colB = st.columns([1, 1])
-    with colA:
-        do_search = st.button("Buscar", use_container_width=True)
-    with colB:
-        clear_search = st.button("Limpiar", use_container_width=True)
+        colA, colB = st.columns([1, 1])
+        with colA:
+            do_search = st.form_submit_button("Buscar", use_container_width=True)
+        with colB:
+            clear_search = st.form_submit_button("Limpiar", use_container_width=True)
 
     # Limpiar búsqueda
     if clear_search:
         st.session_state.search_point = None
         st.session_state.search_label = None
         st.session_state.search_results = None  # ✅ NUEVO: Limpiar resultados guardados
+        st.session_state.search_addr = ""
         st.rerun()
 
     # Ejecutar búsqueda y GUARDAR resultados
