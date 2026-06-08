@@ -192,6 +192,9 @@ with st.sidebar:
     """,
         unsafe_allow_html=True
     )
+
+    st.divider()
+    
     opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
 
     st.divider()
@@ -699,7 +702,7 @@ if not layers:
 
 options = [f'{it["title"]} — ({it["name"]})' for it in layers]
 selected = st.multiselect(
-    "Selecciona una o más capas para visualizar",
+    "Selecciona una o más regiones para visualizar sus capas de incendio",
     options=options,
     default=options[:1] if options else []
 )
@@ -795,7 +798,7 @@ st.markdown(
       <span class="badge sindato">Sin dato</span>
     </div>
     <div class="muted" style="margin-top:0.35rem;">
-      Interpretación: la exposición se determina por el <b>nivel máximo de riesgo encontrado</b> 
+      Interpretación: la exposición se determina por el <b>nivel de exposición de mayor riesgo encontrado</b> 
       dentro del área de análisis (polígono original + buffer de 100m).
     </div>
     """,
@@ -814,7 +817,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
     else:
         # Ahora se puede analizar más de una capa para un mismo polígono
         layer_for_analysis = st.multiselect(
-            "Capa a analizar",
+            "Región a analizar",
             options=selected_layer,
             format_func=lambda x: x["title"],
             default=selected_layer,
@@ -856,7 +859,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                   {badge_html(dom)}
                 </div>
                 <div class="tight" style="margin-top:0.5rem;">
-                  <b>Capa analizada:</b> {" | ".join(lyr)}<br/>
+                  <b>Región analizada:</b> {" | ".join(lyr)}<br/>
                   El Polígono o emplazamiento del proyecto presenta una exposición a la amenaza de incendios forestales <b>{dom}</b>.
                 </div>
                 """,
