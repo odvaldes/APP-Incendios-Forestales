@@ -398,24 +398,29 @@ def polygon_mask_in_bbox(poly: Geom, bbox, w: int, h: int) -> np.ndarray:
 
     return np.array(mask_img) > 0
 
-def wms_getmap_png(wms_url: str, layer_name: str, bbox, size_px: int, timeout_s: int) -> Image.Image:
+def wms_getmap_png(wms_url: str, layer_names: list, bbox, size_px: int, timeout_s: int) -> list:
     minx, miny, maxx, maxy = bbox
-    params = {
-        "SERVICE": "WMS",
-        "REQUEST": "GetMap",
-        "VERSION": "1.1.1",
-        "LAYERS": layer_name,
-        "STYLES": "",
-        "SRS": "EPSG:4326",
-        "BBOX": f"{minx},{miny},{maxx},{maxy}",
-        "WIDTH": str(size_px),
-        "HEIGHT": str(size_px),
-        "FORMAT": "image/png",
-        "TRANSPARENT": "TRUE",
-    }
-    r = requests.get(wms_url, params=params, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"})
-    r.raise_for_status()
-    return Image.open(BytesIO(r.content)).convert("RGBA")
+    # Ahora devuele una lista de imagenes
+    img = []    
+    for lyr in layer_names:
+        params = {
+            "SERVICE": "WMS",
+            "REQUEST": "GetMap",
+            "VERSION": "1.1.1",
+            "LAYERS": lyr["name"],
+            "STYLES": "",
+            "SRS": "EPSG:4326",
+            "BBOX": f"{minx},{miny},{maxx},{maxy}",
+            "WIDTH": str(size_px),
+            "HEIGHT": str(size_px),
+            "FORMAT": "image/png",
+            "TRANSPARENT": "TRUE",
+        }
+        r = requests.get(wms_url, params=params, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"})
+        r.raise_for_status()
+        img.append(Image.open(BytesIO(r.content)).convert("RGBA"))
+
+    return img
 
 def rgb_to_hsv_np(rgb_arr_uint8: np.ndarray) -> np.ndarray:
     rgb = rgb_arr_uint8.astype(np.float32) / 255.0
@@ -476,19 +481,26 @@ def find_highest_scale_from_rgb(rgb_arr_uint8: np.ndarray) -> int:
     return np.unique(assigned)[-1]
 
 # ✅ Modificada: Función para devolver la escala de mayor riesgo dentro de un polígono.
-def predominant_scale_in_polygon(img_rgba: Image.Image, mask_bool: np.ndarray) -> str:
-    arr = np.array(img_rgba)
-    pixels = arr[mask_bool]
-    pixels = pixels[pixels[:, 3] > 0]
-
-    if pixels.size == 0:
-        return "Sin dato"
-    
+def predominant_scale_in_polygon(imgs_rgba: list[Image.Image], mask_bool: np.ndarray) -> str:
     cats = ["Sin dato", "Bajo", "Medio", "Alto", "Muy Alto"]
+    highest_priority = 0
 
-    rgb = pixels[:, :3].astype(np.uint8)
-    highest_priority = find_highest_scale_from_rgb(rgb)
+    # Iterar sobre cada imagen en la lista
+    for img_rgba in imgs_rgba:
+        arr = np.asarray(img_rgba)
+        pixels = arr[mask_bool] 
+        pixels = pixels[pixels[:, 3] > 0]
 
+        if pixels.size == 0:  # Si la imagen no tiene pixeles, pasar a la siguiente.
+            continue
+    
+        rgb = pixels[:, :3].astype(np.uint8)
+        priority = find_highest_scale_from_rgb(rgb)
+
+        # Encontrar el mayor riesgo dentro de la lista de imagenes
+        if priority > highest_priority:
+            highest_priority = priority
+    
     return cats[highest_priority]
 
 def badge_html(level: str) -> str:
@@ -745,6 +757,7 @@ if clear_clicked:
     st.rerun()
 
 if ok_clicked:
+    st.session_state.resultado_exposicion = None
     prev = st.session_state.get("mapa_directo", {})
     if isinstance(prev, dict):
         c = prev.get("center")
@@ -799,14 +812,14 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
     if not selected_layer:
         st.warning("Selecciona al menos una capa WMS para calcular exposición.")
     else:
-        layer_for_analysis = st.selectbox(
+        # Ahora se puede analizar más de una capa para un mismo polígono
+        layer_for_analysis = st.multiselect(
             "Capa a analizar",
-            selected_layer,
+            options=selected_layer,
             format_func=lambda x: x["title"],
-            index=0,
+            default=selected_layer,
             key="layer_for_analysis"
         )
-
         # Botón calcula y GUARDA en session_state
         if st.button("Calcular exposición", type="primary"):
             try:
@@ -815,7 +828,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 bbox = padded_bbox(poly, pad_ratio=0.03)
 
                 size_px = 512
-                img = wms_getmap_png(wms_url, layer_for_analysis["name"], bbox, size_px, timeout)
+                img = wms_getmap_png(wms_url, layer_for_analysis, bbox, size_px, timeout)
                 mask = polygon_mask_in_bbox(poly, bbox, size_px, size_px)
 
                 dominante = predominant_scale_in_polygon(img, mask)
@@ -823,7 +836,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 # ✅ Guardar resultado para que NO se pierda al imprimir / rerun
                 st.session_state.resultado_exposicion = {
                     "dominante": dominante,
-                    "layer": layer_for_analysis["title"],
+                    "layer": [l["title"] for l in layer_for_analysis],
                 }
 
                 st.success("✅ Exposición calculada y guardada.")
@@ -843,7 +856,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                   {badge_html(dom)}
                 </div>
                 <div class="tight" style="margin-top:0.5rem;">
-                  <b>Capa analizada:</b> {lyr}<br/>
+                  <b>Capa analizada:</b> {" | ".join(lyr)}<br/>
                   El Polígono o emplazamiento del proyecto presenta una exposición a la amenaza de incendios forestales <b>{dom}</b>.
                 </div>
                 """,
