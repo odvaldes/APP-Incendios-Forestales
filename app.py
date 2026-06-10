@@ -22,6 +22,9 @@ from typing import Union, List, Dict
 from shapely.ops import transform
 from pyproj import Transformer # Requerimiento nuevo agregado 'pyproj'
 
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -288,22 +291,30 @@ with st.sidebar:
     st.caption("Se abrirá la impresión del navegador. En 'Destino' elige **Guardar como PDF**.")
 
     if st.session_state.trigger_print:
-        components.html(
-        """
-            <script>
-            // Imprime la página principal (no el iframe del componente)
-              setTimeout(() => {
-                  if (window.parent) {
-                          window.parent.print();
-                          } else {
-                              window.print();
-                              }
-                              }, 250);
-                              </script>
-                                  """,
-                                  height=0,
-                                  width=0,
-                                  )
+        pdf_buffer = BytesIO()
+        my_doc = SimpleDocTemplate(pdf_buffer)
+        sample_style_sheet = getSampleStyleSheet()
+
+        flowables = []
+
+        paragraph_1 = Paragraph("A title", sample_style_sheet['Heading1'])
+        paragraph_2 = Paragraph(
+            "Some normal body text",
+            sample_style_sheet['BodyText']
+        )
+        flowables.append(paragraph_1)
+        flowables.append(paragraph_2)
+
+        my_doc.build(flowables)
+        pdf_buffer.seek(0)
+
+        st.download_button(
+            label="⬇️ Descargar Reporte PDF",
+            data=pdf_buffer,
+            file_name=f"reporte_ejemplo.pdf",
+            mime="application/pdf"
+        )
+
     st.session_state.trigger_print = False
     
 # -----------------------------
