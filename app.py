@@ -22,8 +22,16 @@ from typing import Union, List, Dict
 from shapely.ops import transform
 from pyproj import Transformer # Requerimiento nuevo agregado 'pyproj'
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
+
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+
+import math
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -156,6 +164,9 @@ if "resultado_exposicion" not in st.session_state:
 if "polygon_buffer_geojson" not in st.session_state:
     st.session_state.polygon_buffer_geojson = None
 
+if "selected_layer" not in st.session_state:
+    st.session_state.selected_layer = []
+
 # -----------------------------
 # BUSCADOR DE DIRECCIONES (Nominatim / OSM)
 # -----------------------------
@@ -173,149 +184,6 @@ def geocode_nominatim(query: str, limit: int = 6) -> List[Dict]:
     r = requests.get(url, params=params, headers=headers, timeout=20)
     r.raise_for_status()
     return r.json()
-
-# -----------------------------
-# SIDEBAR
-# -----------------------------
-with st.sidebar:
-    st.header("Fuente de datos")
-    wms_url = st.text_input("URL del servicio WMS", value=DEFAULT_WMS)
-    timeout = 25
-    st.markdown(
-    """
-    • <a href="https://sni.gob.cl/storage/docs/Metodologia_RRD_290925.pdf" target="_blank">
-      Metodología RRD
-    </a><br/>
-    • <a href="https://sni.gob.cl/storage/docs/Manual_de_escalas_IRD_Incendios_Forestales_Sep2025.pdf" target="_blank">
-      Manual de escalas IRD – Incendios Forestales
-    </a><br/>
-    • <a href="https://sni.gob.cl/storage/docs/zip/PlanillasRRDD_2025.zip" target="_blank">
-      Planillas de cálculo IRD
-    </a>
-    """,
-        unsafe_allow_html=True
-    )
-
-    st.divider()
-    
-    opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
-
-    st.divider()
-    st.header("🔎 Buscar dirección")
-
-    # Formulario para buscar dirección.
-    with st.form(key="buscar_direccion", border=False):
-    
-        st.session_state.search_addr = st.text_input(
-            "Dirección / lugar (Chile)",
-            value=st.session_state.search_addr,
-            placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago"
-        )
-
-        addr = st.session_state.search_addr
-    
-        colA, colB = st.columns([1, 1])
-        with colA:
-            do_search = st.form_submit_button("Buscar", use_container_width=True)
-        with colB:
-            clear_search = st.form_submit_button("Limpiar", use_container_width=True)
-
-    # Limpiar búsqueda
-    if clear_search:
-        st.session_state.search_point = None
-        st.session_state.search_label = None
-        st.session_state.search_results = None  # ✅ NUEVO: Limpiar resultados guardados
-        st.session_state.search_addr = ""
-        st.rerun()
-
-    # Ejecutar búsqueda y GUARDAR resultados
-    if do_search and addr.strip():
-        try:
-            results = geocode_nominatim(addr.strip(), limit=6)
-            if not results:
-                st.warning("No se encontraron resultados. Prueba con más detalle (comuna/ciudad).")
-                st.session_state.search_results = None
-            else:
-                st.session_state.search_results = results # ✅ NUEVO: GUARDAR resultados en session_state
-                st.success(f"✅ Se encontraron {len(results)} resultado(s)")
-        except Exception as e:
-            st.error("Error al buscar dirección.")
-            st.exception(e)
-            st.session_state.search_results = None
-
-    # ✅ NUEVO: MOSTRAR selectbox SIEMPRE que haya resultados guardados
-    if st.session_state.get("search_results"):
-        results = st.session_state.search_results
-        
-        options_geo = [
-            f'{r.get("display_name","(sin nombre)")}  [lat={r.get("lat")}, lon={r.get("lon")}]'
-            for r in results
-        ]
-        
-        # ✅ El selectbox ahora persiste entre reruns
-        chosen = st.selectbox(
-            "Resultados de búsqueda",
-            options_geo,
-            index=0,
-            key="selectbox_geocode"  # ✅ Key para mantener estado
-        )
-        
-        # ✅ Botón para aplicar la selección
-        if st.button("📍 Ir a esta ubicación", use_container_width=True):
-            idx = options_geo.index(chosen)
-            lat = float(results[idx]["lat"])
-            lon = float(results[idx]["lon"])
-
-            st.session_state.search_point = (lat, lon)
-            st.session_state.search_label = results[idx].get("display_name", addr.strip())
-
-            # ✅ NO usar zoom 30 (Leaflet no llega); usa 14 aprox
-            st.session_state.map_center = [lat, lon]
-            st.session_state.map_zoom = 14
-
-            st.success("Ubicación centrada en el mapa ✅")
-            st.rerun()
-
-    # ============================================================
-    # 🖨️ BOTÓN: Guardar print (equivale a Ctrl+P -> Guardar como PDF)
-    # ============================================================
-    st.divider()
-    st.header("🖨️ Guardar print (PDF)")
-
-    if "trigger_print" not in st.session_state:
-        st.session_state.trigger_print = False
-
-    if st.button("📄 Guardar print", use_container_width=True):
-        st.session_state.trigger_print = True
-
-    st.caption("Se abrirá la impresión del navegador. En 'Destino' elige **Guardar como PDF**.")
-
-    if st.session_state.trigger_print:
-        pdf_buffer = BytesIO()
-        my_doc = SimpleDocTemplate(pdf_buffer)
-        sample_style_sheet = getSampleStyleSheet()
-
-        flowables = []
-
-        paragraph_1 = Paragraph("A title", sample_style_sheet['Heading1'])
-        paragraph_2 = Paragraph(
-            "Some normal body text",
-            sample_style_sheet['BodyText']
-        )
-        flowables.append(paragraph_1)
-        flowables.append(paragraph_2)
-
-        my_doc.build(flowables)
-        pdf_buffer.seek(0)
-
-        st.download_button(
-            label="⬇️ Descargar Reporte PDF",
-            data=pdf_buffer,
-            file_name=f"reporte_ejemplo.pdf",
-            mime="application/pdf"
-        )
-
-    st.session_state.trigger_print = False
     
 # -----------------------------
 # FUNCIONES WMS (capabilities)
@@ -685,6 +553,295 @@ def build_map(selected_layer, opacity: float, wms_url: str, center, zoom, search
     return m
 
 # -----------------------------
+# PRUEBA REPORTE MAPA
+# -----------------------------
+def deg2num(lat_deg, lon_deg, zoom):
+    lat_rad = math.radians(lat_deg)
+    n = 2.0 ** zoom
+    xtile = int((lon_deg + 180.0) / 360.0 * n)
+    ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
+    return xtile, ytile
+
+def get_basemap_image(center, zoom, provider="ESR"):
+    lat, lon = center
+    tile_size = 256
+
+    xtile, ytile = deg2num(lat, lon, zoom)
+    st.write(xtile)
+    st.write(ytile)
+    st.write(zoom)
+
+    tiles_range = 1  # cantidad de tiles alrededor del centro
+    full_img = Image.new("RGB", (tile_size * (tiles_range*2+1), tile_size * (tiles_range*2+1)))
+
+    for dx in range(-tiles_range, tiles_range+1):
+        for dy in range(-tiles_range, tiles_range+1):
+            x = xtile + dx
+            y = ytile + dy
+
+            if provider == "OSM":
+                url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
+            else:
+                url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
+
+            try:
+                r = requests.get(url, timeout=10)
+                tile = Image.open(BytesIO(r.content)).convert("RGB")
+                full_img.paste(tile, ((dx+tiles_range)*tile_size, (dy+tiles_range)*tile_size))
+            except:
+                pass
+
+    return full_img
+
+def get_wms_overlay(wms_url: str, layer_names: list, bbox, size_px: int):
+    minx, miny, maxx, maxy = bbox
+
+    base = Image.new("RGBA", (size_px, size_px), (0,0,0,0))
+
+    for lyr in layer_names:
+        params = {
+            "SERVICE": "WMS",
+            "REQUEST": "GetMap",
+            "VERSION": "1.1.1",
+            "LAYERS": lyr["name"],
+            "STYLES": "",
+            "SRS": "EPSG:4326",
+            "BBOX": f"{minx},{miny},{maxx},{maxy}",
+            "WIDTH": str(size_px),
+            "HEIGHT": str(size_px),
+            "FORMAT": "image/png",
+            "TRANSPARENT": "TRUE",
+        }
+
+        r = requests.get(wms_url, params=params, timeout=30, headers={"User-Agent": "streamlit-wms-viewer"})
+        img = Image.open(BytesIO(r.content)).convert("RGBA")
+        base = Image.alpha_composite(base, img)
+
+    return base
+
+def draw_polygon_on_image(img, polygon_feature, bbox, color=(0,0,0), width=4):
+    draw = ImageDraw.Draw(img)
+
+    poly = shape(polygon_feature["geometry"])
+
+    minx, miny, maxx, maxy = bbox
+    w, h = img.size
+
+    def to_px(lon, lat):
+        x = (lon - minx) / (maxx - minx) * w
+        y = (maxy - lat) / (maxy - miny) * h
+        return (x, y)
+
+    if isinstance(poly, Polygon):
+        coords = [to_px(x,y) for x,y in poly.exterior.coords]
+        draw.line(coords, fill=color, width=width)
+
+    return img
+
+def draw_legend(img):
+    draw = ImageDraw.Draw(img)
+
+    legend_items = [
+        ("Bajo", (170,206,172)),
+        ("Medio", (241,251,123)),
+        ("Alto", (247,162,72)),
+        ("Muy Alto", (240,38,28)),
+    ]
+
+    x0, y0 = 30, img.height - 180
+    box_size = 30
+
+    draw.rectangle([x0-15, y0-20, x0+220, y0+140], fill=(255,255,255,230))
+
+    for i, (label, color) in enumerate(legend_items):
+        y = y0 + i*35
+        draw.rectangle([x0, y, x0+box_size, y+box_size], fill=color)
+        draw.text((x0+45, y+5), label, fill=(0,0,0))
+
+    return img
+
+def generate_map_image():
+    # ✅ Verificar que exista polígono confirmado
+    if not st.session_state.get("polygon_geojson"):
+        raise ValueError("No existe polígono confirmado para generar el reporte.")
+    
+    size_px = 1024
+
+    # bbox desde polígono buffer
+    feature = st.session_state.polygon_buffer_geojson or st.session_state.polygon_geojson
+    poly = geojson_to_shapely(feature)
+    bbox = padded_bbox(poly, 0.1)
+
+    centroid = poly.centroid
+    center = [centroid.y, centroid.x]
+    zoom = st.session_state.map_zoom
+
+    basemap = get_basemap_image(center, zoom, provider="ESR")
+    st.image(basemap)
+    st.divider()
+    basemap = basemap.resize((size_px, size_px))
+    st.image(basemap)
+
+    overlay = get_wms_overlay(wms_url, st.session_state.selected_layer, bbox, size_px)
+
+    combined = Image.alpha_composite(basemap.convert("RGBA"), overlay)
+
+    combined = draw_polygon_on_image(combined, st.session_state.polygon_geojson, bbox, color=(0,0,0), width=6)
+
+    if st.session_state.polygon_buffer_geojson:
+        combined = draw_polygon_on_image(combined, st.session_state.polygon_buffer_geojson, bbox, color=(255,0,0), width=4)
+
+    combined = draw_legend(combined)
+
+    return combined
+
+def generate_pdf(map_image):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+
+    style = ParagraphStyle(
+        name="TitleStyle",
+        fontSize=18,
+        textColor=colors.HexColor("#003DA5"),
+        spaceAfter=20
+    )
+
+    elements.append(Paragraph("Reporte de Exposición a Incendios Forestales", style))
+    elements.append(Spacer(1, 20))
+
+    img_buffer = BytesIO()
+    map_image.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+
+    rl_img = RLImage(img_buffer, width=18*cm, height=18*cm)
+    elements.append(rl_img)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+# -----------------------------
+# SIDEBAR
+# -----------------------------
+with st.sidebar:
+    st.header("Fuente de datos")
+    wms_url = st.text_input("URL del servicio WMS", value=DEFAULT_WMS)
+    timeout = 25
+    st.markdown(
+    """
+    • <a href="https://sni.gob.cl/storage/docs/Metodologia_RRD_290925.pdf" target="_blank">
+      Metodología RRD
+    </a><br/>
+    • <a href="https://sni.gob.cl/storage/docs/Manual_de_escalas_IRD_Incendios_Forestales_Sep2025.pdf" target="_blank">
+      Manual de escalas IRD – Incendios Forestales
+    </a><br/>
+    • <a href="https://sni.gob.cl/storage/docs/zip/PlanillasRRDD_2025.zip" target="_blank">
+      Planillas de cálculo IRD
+    </a>
+    """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
+    
+    opacity = st.slider("Opacidad capas WMS", 0.0, 1.0, 0.75, 0.05)
+
+    st.divider()
+    st.header("🔎 Buscar dirección")
+
+    # Formulario para buscar dirección.
+    with st.form(key="buscar_direccion", border=False):
+    
+        st.session_state.search_addr = st.text_input(
+            "Dirección / lugar (Chile)",
+            value=st.session_state.search_addr,
+            placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago"
+        )
+
+        addr = st.session_state.search_addr
+    
+        colA, colB = st.columns([1, 1])
+        with colA:
+            do_search = st.form_submit_button("Buscar", use_container_width=True)
+        with colB:
+            clear_search = st.form_submit_button("Limpiar", use_container_width=True)
+
+    # Limpiar búsqueda
+    if clear_search:
+        st.session_state.search_point = None
+        st.session_state.search_label = None
+        st.session_state.search_results = None  # ✅ NUEVO: Limpiar resultados guardados
+        st.session_state.search_addr = ""
+        st.rerun()
+
+    # Ejecutar búsqueda y GUARDAR resultados
+    if do_search and addr.strip():
+        try:
+            results = geocode_nominatim(addr.strip(), limit=6)
+            if not results:
+                st.warning("No se encontraron resultados. Prueba con más detalle (comuna/ciudad).")
+                st.session_state.search_results = None
+            else:
+                st.session_state.search_results = results # ✅ NUEVO: GUARDAR resultados en session_state
+                st.success(f"✅ Se encontraron {len(results)} resultado(s)")
+        except Exception as e:
+            st.error("Error al buscar dirección.")
+            st.exception(e)
+            st.session_state.search_results = None
+
+    # ✅ NUEVO: MOSTRAR selectbox SIEMPRE que haya resultados guardados
+    if st.session_state.get("search_results"):
+        results = st.session_state.search_results
+        
+        options_geo = [
+            f'{r.get("display_name","(sin nombre)")}  [lat={r.get("lat")}, lon={r.get("lon")}]'
+            for r in results
+        ]
+        
+        # ✅ El selectbox ahora persiste entre reruns
+        chosen = st.selectbox(
+            "Resultados de búsqueda",
+            options_geo,
+            index=0,
+            key="selectbox_geocode"  # ✅ Key para mantener estado
+        )
+        
+        # ✅ Botón para aplicar la selección
+        if st.button("📍 Ir a esta ubicación", use_container_width=True):
+            idx = options_geo.index(chosen)
+            lat = float(results[idx]["lat"])
+            lon = float(results[idx]["lon"])
+
+            st.session_state.search_point = (lat, lon)
+            st.session_state.search_label = results[idx].get("display_name", addr.strip())
+
+            # ✅ NO usar zoom 30 (Leaflet no llega); usa 14 aprox
+            st.session_state.map_center = [lat, lon]
+            st.session_state.map_zoom = 14
+
+            st.success("Ubicación centrada en el mapa ✅")
+            st.rerun()
+
+    # ============================================================
+    # 🖨️ BOTÓN: Guardar print (equivale a Ctrl+P -> Guardar como PDF)
+    # ============================================================
+    st.divider()
+    st.header("🖨️ Guardar print (PDF)")
+
+    if st.button("📄 Generar Reporte PDF"):
+        with st.spinner("Generando reporte..."):
+            map_img = generate_map_image()
+            pdf_file = generate_pdf(map_img)
+
+            st.download_button(
+                label="⬇️ Descargar PDF",
+                data=pdf_file,
+                file_name="reporte_exposicion_incendios.pdf",
+                mime="application/pdf"
+            )
+
+# -----------------------------
 # CAPABILITIES + LAYERS
 # -----------------------------
 caps = None
@@ -717,7 +874,7 @@ selected = st.multiselect(
     options=options,
     default=options[:1] if options else []
 )
-selected_layer = [layers[options.index(s)] for s in selected] if selected else []
+st.session_state.selected_layer = [layers[options.index(s)] for s in selected] if selected else []
 
 # -----------------------------
 # MAPA
@@ -725,7 +882,7 @@ selected_layer = [layers[options.index(s)] for s in selected] if selected else [
 st.subheader("Mapa")
 
 m = build_map(
-    selected_layer,
+    st.session_state.selected_layer,
     opacity,
     wms_url,
     st.session_state.map_center,
@@ -823,15 +980,15 @@ st.markdown(
 # RESULTADO (PERSISTENTE)
 # -----------------------------
 if st.session_state.polygon_ok and st.session_state.polygon_geojson:
-    if not selected_layer:
+    if not st.session_state.selected_layer:
         st.warning("Selecciona al menos una capa WMS para calcular exposición.")
     else:
         # Ahora se puede analizar más de una capa para un mismo polígono
         layer_for_analysis = st.multiselect(
             "Región a analizar",
-            options=selected_layer,
+            options=st.session_state.selected_layer,
             format_func=lambda x: x["title"],
-            default=selected_layer,
+            default=st.session_state.selected_layer,
             key="layer_for_analysis"
         )
         # Botón calcula y GUARDA en session_state
