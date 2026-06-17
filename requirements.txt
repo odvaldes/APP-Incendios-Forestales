@@ -7,3 +7,4 @@ Pillow>=10.0
 shapely>=2.0
 pyproj>=3.6
 reportlab>=4.5.1
+mercantile>=1.2

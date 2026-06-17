@@ -13,25 +13,25 @@ from folium.plugins import Draw
 from streamlit_folium import st_folium
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from shapely.geometry import shape, Polygon, MultiPolygon, mapping
 from io import BytesIO
 import warnings
+import math
 from typing import Union, List, Dict
 
 from shapely.ops import transform
 from pyproj import Transformer # Requerimiento nuevo agregado 'pyproj'
 
+import mercantile
 
+# ReportLab
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
-from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
-
-import math
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -101,17 +101,11 @@ st.markdown(
       .sindato { background: #9CA3AF; }
       .muted { color: #6b7280; font-size: 0.9rem; }
       .tight { margin-top: 0.2rem; }
-
-      /* Para ocultar el sidebar al Guardar print */
-      @media print {
-        section[data-testid="stSidebar"] {
-          display: none !important;
-        }
-      }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 # =========================
 # HEADER CON LOGO
 # =========================
@@ -122,7 +116,7 @@ with col_title:
         <div style='background-color:#003DA5; padding: 12px; border-radius: 6px;'>
             <h2 style='color:white; text-align:left; margin: 0;'>
                 🌍 Visor de Exposición a la Amenaza de Incendios Forestales 
-                </h2>
+            </h2>
         </div>
         """,
         unsafe_allow_html=True
@@ -166,6 +160,12 @@ if "polygon_buffer_geojson" not in st.session_state:
 
 if "selected_layer" not in st.session_state:
     st.session_state.selected_layer = []
+if "layer_for_analysis" not in st.session_state:
+    st.session_state.layer_for_analysis = []
+
+# ✅ NUEVO: rastrea capa base activa.
+if "active_base_layer" not in st.session_state:
+    st.session_state.active_base_layer = "OpenStreetMap"
 
 # -----------------------------
 # BUSCADOR DE DIRECCIONES (Nominatim / OSM)
@@ -184,17 +184,138 @@ def geocode_nominatim(query: str, limit: int = 6) -> List[Dict]:
     r = requests.get(url, params=params, headers=headers, timeout=20)
     r.raise_for_status()
     return r.json()
+
+# =========================
+# FUNCIONES DE TILES (capa base estática)
+# =========================
+
+def _tile_url_osm(x: int, y: int, z: int) -> str:
+    """URL de tile OSM."""
+    servers = ["a", "b", "c"]
+    s = servers[(x + y + z) % 3]
+    return f"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+
+def _tile_url_esri(x: int, y: int, z: int) -> str:
+    """URL de tile Esri Satélite."""
+    return (
+        f"https://server.arcgisonline.com/ArcGIS/rest/services/"
+        f"World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    )
+
+def _download_tile(url: str, timeout: int = 15) -> Image.Image:
+    """Descarga un tile y devuelve imagen RGBA."""
+    headers = {"User-Agent": "streamlit-visor-senapred/1.0"}
+    r = requests.get(url, timeout=timeout, headers=headers)
+    r.raise_for_status()
+    return Image.open(BytesIO(r.content)).convert("RGBA")
+
+def bbox_with_padding(poly_geom, pad_ratio: float = 0.25):
+    """
+    Devuelve (minx, miny, maxx, maxy) con padding alrededor del polígono/buffer.
+    pad_ratio=0.25 → 25% de contexto adicional a cada lado.
+    """
+    minx, miny, maxx, maxy = poly_geom.bounds
+    dx = (maxx - minx) * pad_ratio or 0.02
+    dy = (maxy - miny) * pad_ratio or 0.02
+    return (minx - dx, miny - dy, maxx + dx, maxy + dy)
+
+def choose_zoom_for_bbox(minx, miny, maxx, maxy, target_px: int = 800) -> int:
+    """
+    Elige el nivel de zoom más alto que permite que el bbox quepa en target_px píxeles.
+    Usa la fórmula de mercantile/Web Mercator.
+    """
+    for z in range(18, 4, -1):
+        # Número de tiles en x e y para este bbox y zoom
+        tiles = list(mercantile.tiles(minx, miny, maxx, maxy, zooms=z))
+        xs = {t.x for t in tiles}
+        ys = {t.y for t in tiles}
+        n_tiles_x = max(xs) - min(xs) + 1
+        n_tiles_y = max(ys) - min(ys) + 1
+        px_x = n_tiles_x * 256
+        px_y = n_tiles_y * 256
+        if px_x <= target_px * 2 and px_y <= target_px * 2:
+            return z
+    return 8
+
+def build_base_map_image(
+    bbox,                    # (minx, miny, maxx, maxy) en EPSG:4326
+    layer_name: str,         # "OpenStreetMap" o "Esri Satélite"
+    target_size: int = 1024, # píxeles del lado mayor de la imagen final
+    timeout: int = 20,
+) -> tuple[Image.Image, tuple]:
+    """
+    Descarga tiles XYZ para el bbox y devuelve:
+      - imagen PIL de la capa base (RGBA)
+      - bbox real cubierto por los tiles descargados (para usarlo en WMS y polígono)
+    """
+    minx, miny, maxx, maxy = bbox
+    z = choose_zoom_for_bbox(minx, miny, maxx, maxy, target_px=target_size)
+
+    tiles = list(mercantile.tiles(minx, miny, maxx, maxy, zooms=z))
+    if not tiles:
+        raise ValueError("No se encontraron tiles para el bbox indicado.")
+
+    xs = sorted({t.x for t in tiles})
+    ys = sorted({t.y for t in tiles})
+    x_min_t, x_max_t = min(xs), max(xs)
+    y_min_t, y_max_t = min(ys), max(ys)
+
+    n_x = x_max_t - x_min_t + 1
+    n_y = y_max_t - y_min_t + 1
+
+    canvas = Image.new("RGBA", (n_x * 256, n_y * 256), (255, 255, 255, 255))
+
+    # Selector de URL según capa base
+    url_fn = _tile_url_osm if "OpenStreetMap" in layer_name else _tile_url_esri
+
+    for tile in tiles:
+        url = url_fn(tile.x, tile.y, z)
+        try:
+            img_tile = _download_tile(url, timeout)
+        except Exception:
+            img_tile = Image.new("RGBA", (256, 256), (200, 200, 200, 255))
+        px = (tile.x - x_min_t) * 256
+        py = (tile.y - y_min_t) * 256
+        canvas.paste(img_tile, (px, py))
+
+    # BBox real cubierto por los tiles descargados
+    ul = mercantile.ul(x_min_t, y_min_t, z)
+    br = mercantile.ul(x_max_t + 1, y_max_t + 1, z)
+    real_bbox = (ul.lng, br.lat, br.lng, ul.lat)  # (minx, miny, maxx, maxy)
+
+    # Recortar al bbox solicitado
+    def lon_to_px(lon):
+        return int((lon - real_bbox[0]) / (real_bbox[2] - real_bbox[0]) * canvas.width)
+    def lat_to_py(lat):
+        return int((real_bbox[3] - lat) / (real_bbox[3] - real_bbox[1]) * canvas.height)
+
+    x0 = max(lon_to_px(minx), 0)
+    y0 = max(lat_to_py(maxy), 0)
+    x1 = min(lon_to_px(maxx), canvas.width)
+    y1 = min(lat_to_py(miny), canvas.height)
+
+    cropped = canvas.crop((x0, y0, x1, y1))
+
+    # Redimensionar al target manteniendo aspecto
+    w, h = cropped.size
+    if w == 0 or h == 0:
+        cropped = canvas
+        w, h = canvas.size
+
+    ratio = target_size / max(w, h)
+    new_w, new_h = int(w * ratio), int(h * ratio)
+    cropped = cropped.resize((new_w, new_h), Image.LANCZOS)
+
+    return cropped, (minx, miny, maxx, maxy)
     
 # -----------------------------
 # FUNCIONES WMS (capabilities)
 # -----------------------------
 # ✅ NUEVO: función para mostrar el nombre de las regiones
 def format_layer_title(name: int) -> str:
-
     # Verificar que sea un dígito
-    if name.isdigit():
-        if name in REGIONES_CHILE:
-            return REGIONES_CHILE[name]
+    if name.isdigit() and name in REGIONES_CHILE:
+        return REGIONES_CHILE[name]
     
     # Si no coincide, retornar name (número) original
     return f"Región name: {name}"
@@ -415,6 +536,316 @@ def buffer_feature_100m(feature: dict) -> dict:
         "geometry": mapping(geom_buf_ll),
     }
 
+# =========================
+# COMPOSICIÓN DE IMAGEN DEL MAPA PARA PDF
+# =========================
+
+def _geom_to_px(geom_coords, bbox, w: int, h: int):
+    """Convierte lista de (lon, lat) a píxeles en la imagen."""
+    minx, miny, maxx, maxy = bbox
+    return [
+        (
+            (lon - minx) / (maxx - minx) * w,
+            (maxy - lat) / (maxy - miny) * h,
+        )
+        for lon, lat in geom_coords
+    ]
+
+def _draw_polygon_on_image(
+    draw: ImageDraw.Draw,
+    poly: Geom,
+    bbox: tuple,
+    w: int,
+    h: int,
+    outline_color: tuple,
+    fill_color: tuple,
+    line_width: int = 3,
+):
+    """Dibuja un Polygon o MultiPolygon sobre un ImageDraw."""
+    def draw_one(p: Polygon):
+        ext_px = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(ext_px) < 2:
+            return
+        # Relleno semitransparente
+        overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay)
+        ov_draw.polygon(ext_px, fill=fill_color)
+        return overlay, ext_px
+
+    polys_to_draw = poly.geoms if isinstance(poly, MultiPolygon) else [poly]
+
+    overlays = []
+    outlines = []
+    for p in polys_to_draw:
+        ext_px = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(ext_px) < 2:
+            continue
+        overlays.append(ext_px)
+        outlines.append(ext_px)
+
+    return overlays, outlines
+
+def _draw_dashed_line(draw: ImageDraw.Draw, points, color, width=3,
+                      dash_len=12, gap_len=8):
+    """Dibuja una polilínea punteada/guionada."""
+    for i in range(len(points) - 1):
+        x0, y0 = points[i]
+        x1, y1 = points[i + 1]
+        seg_len = math.hypot(x1 - x0, y1 - y0)
+        if seg_len == 0:
+            continue
+        dx = (x1 - x0) / seg_len
+        dy = (y1 - y0) / seg_len
+        pos = 0.0
+        drawing = True
+        while pos < seg_len:
+            seg_end = min(pos + (dash_len if drawing else gap_len), seg_len)
+            if drawing:
+                sx = x0 + dx * pos
+                sy = y0 + dy * pos
+                ex = x0 + dx * seg_end
+                ey = y0 + dy * seg_end
+                draw.line([(sx, sy), (ex, ey)], fill=color, width=width)
+            pos = seg_end
+            drawing = not drawing
+
+def _add_legend(base_img: Image.Image) -> Image.Image:
+    """
+    Añade una leyenda de exposición en la esquina inferior izquierda.
+    Devuelve la imagen con la leyenda incrustada.
+    """
+    # Configuración
+    padding   = 12
+    box_size  = 18
+    gap       = 8
+    font_size = 18
+    line_h    = box_size + 6
+
+    items = [
+        ("Bajo",     (170, 206, 172, 255)),
+        ("Medio",    (241, 251, 123, 255)),
+        ("Alto",     (247, 162,  72, 255)),
+        ("Muy Alto", (240,  38,  28, 255)),
+    ]
+
+    title_text = "Exposición"
+    n_items    = len(items)
+    legend_w   = 160
+    legend_h   = padding + line_h + padding + 1 + padding + n_items * (line_h + 4) + padding
+
+    legend = Image.new("RGBA", (legend_w, legend_h), (255, 255, 255, 220))
+    ld     = ImageDraw.Draw(legend)
+
+    # Intentar cargar fuente; si falla usar default
+    try:
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        font_item  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size - 2)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_item  = font_title
+
+    # Borde
+    ld.rectangle([(0, 0), (legend_w - 1, legend_h - 1)],
+                 outline=(0, 0, 0, 200), width=2)
+
+    # Título
+    ld.text((padding, padding), title_text, fill=(0, 0, 0, 255), font=font_title)
+    y_line = padding + line_h
+    ld.line([(0, y_line), (legend_w, y_line)], fill=(0, 0, 0, 180), width=1)
+
+    # Ítems
+    y = y_line + padding
+    for label, color in items:
+        ld.rectangle([(padding, y), (padding + box_size, y + box_size)],
+                     fill=color, outline=(30, 30, 30, 255), width=1)
+        ld.text((padding + box_size + gap, y + 1), label,
+                fill=(0, 0, 0, 255), font=font_item)
+        y += line_h + 4
+
+    # Pegar leyenda en la imagen base (esquina inferior izquierda)
+    result = base_img.copy().convert("RGBA")
+    margin = 16
+    pos_x  = margin
+    pos_y  = result.height - legend_h - margin
+    result.paste(legend, (pos_x, pos_y), legend)
+    return result
+
+
+def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
+                      wms_layers: list, wms_url: str, base_layer_name: str,
+                      wms_opacity: float = 0.75, target_px: int = 1024, timeout: int = 25) -> Image.Image:
+    
+    # ── 1. Geometrías ──────────────────────────────────────────────
+    buf_geom  = geojson_to_shapely(buffer_geojson)
+    orig_geom = geojson_to_shapely(polygon_geojson)
+
+    # Bbox con padding generoso para contexto (25 %)
+    bbox = bbox_with_padding(buf_geom, pad_ratio=0.25)
+    minx, miny, maxx, maxy = bbox
+
+    # ── 2. Capa base ───────────────────────────────────────────────
+    base_img, _ = build_base_map_image(
+        bbox, base_layer_name, target_size=target_px, timeout=timeout
+    )
+    w, h = base_img.size
+
+    # ── 3. Capas WMS ───────────────────────────────────────────────
+    if wms_layers:
+        # Pedir WMS con las mismas dimensiones que la imagen base
+        wms_imgs = wms_getmap_png(wms_url, wms_layers, bbox, max(w, h), timeout)
+
+        for wms_img in wms_imgs:
+            # Redimensionar WMS a tamaño de la base
+            wms_resized = wms_img.resize((w, h), Image.LANCZOS)
+
+            # Aplicar opacidad al canal alpha
+            r_ch, g_ch, b_ch, a_ch = wms_resized.split()
+            a_arr = np.array(a_ch, dtype=np.float32)
+            a_arr = (a_arr * wms_opacity).clip(0, 255).astype(np.uint8)
+            wms_resized = Image.merge("RGBA", (r_ch, g_ch, b_ch,
+                                               Image.fromarray(a_arr)))
+            base_img = Image.alpha_composite(base_img.convert("RGBA"), wms_resized)
+
+    base_img = base_img.convert("RGBA")
+
+    # ── 4. Dibujar polígono original ───────────────────────────────
+    fill_orig    = (96, 165, 250, 60)    # azul semitransparente
+    outline_orig = (17,  24,  39, 230)   # casi negro
+
+    overlay_orig = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    od           = ImageDraw.Draw(overlay_orig)
+
+    def draw_poly_fill(p: Polygon, fill):
+        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(pts) >= 3:
+            od.polygon(pts, fill=fill)
+
+    polys_orig = orig_geom.geoms if isinstance(orig_geom, MultiPolygon) else [orig_geom]
+    for p in polys_orig:
+        draw_poly_fill(p, fill_orig)
+
+    base_img = Image.alpha_composite(base_img, overlay_orig)
+
+    # Contorno del polígono original (sólido)
+    final_draw = ImageDraw.Draw(base_img)
+    for p in polys_orig:
+        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(pts) >= 2:
+            final_draw.line(pts + [pts[0]], fill=outline_orig, width=3)
+
+    # ── 5. Dibujar buffer (rojo guionado) ──────────────────────────
+    fill_buf    = (220, 38, 38, 45)     # rojo semitransparente
+    outline_buf = (220, 38, 38, 230)    # rojo sólido
+
+    overlay_buf = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    bd          = ImageDraw.Draw(overlay_buf)
+
+    polys_buf = buf_geom.geoms if isinstance(buf_geom, MultiPolygon) else [buf_geom]
+    for p in polys_buf:
+        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(pts) >= 3:
+            bd.polygon(pts, fill=fill_buf)
+
+    base_img    = Image.alpha_composite(base_img, overlay_buf)
+    final_draw2 = ImageDraw.Draw(base_img)
+
+    for p in polys_buf:
+        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(pts) >= 2:
+            _draw_dashed_line(final_draw2, pts + [pts[0]],
+                              color=outline_buf, width=3,
+                              dash_len=14, gap_len=7)
+
+    # ── 6. Leyenda ─────────────────────────────────────────────────
+    base_img = _add_legend(base_img)
+
+    return base_img.convert("RGB")
+
+
+# =========================
+# GENERACIÓN DEL PDF CON REPORTLAB
+# =========================
+
+def generate_pdf(map_image: Image.Image) -> bytes:
+    """
+    Construye el PDF con ReportLab:
+      - Página en vertical
+      - Título institucional
+      - Imagen del mapa centrada
+    Devuelve los bytes del PDF.
+    """
+    buffer = BytesIO()
+
+    page_w, page_h = A4
+    margin = 1.5 * cm
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
+    )
+
+    styles = getSampleStyleSheet()
+
+    # ── Estilo del título ──────────────────────────────────────────
+    title_style = ParagraphStyle(
+        "TituloInstitucional",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=colors.white,
+        alignment=TA_CENTER,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=20,
+    )
+
+    # ── Contenido ──────────────────────────────────────────────────
+    story = []
+
+    # Bloque de título con fondo azul institucional
+    title_text = "Visor de Exposición a la Amenaza de Incendios Forestales"
+
+    title_style = ParagraphStyle(
+    name='title',
+    fontSize=18,
+    leading=28,
+    alignment=1, # 0 = Izquierda, 1 = Centro, 2 = Derecha
+    textColor=colors.HexColor('#1A3C6E'),
+    spaceAfter=20
+    )
+
+    title_pdf  = Paragraph(title_text, title_style)
+    usable_w    = page_w - 2 * margin
+
+    story.append(title_pdf)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ── Imagen del mapa ────────────────────────────────────────────
+    img_buffer = BytesIO()
+    map_image.save(img_buffer, format="PNG", dpi=(150, 150))
+    img_buffer.seek(0)
+
+    # Calcular dimensiones para que quepa en la página
+    usable_h = page_h - 2 * margin - 2.2 * cm   # espacio que queda tras título
+    map_w_px, map_h_px = map_image.size
+    aspect    = map_w_px / map_h_px
+    img_h     = min(usable_h, usable_w / aspect)
+    img_w     = img_h * aspect
+    if img_w > usable_w:
+        img_w = usable_w
+        img_h = img_w / aspect
+
+    rl_img = RLImage(img_buffer, width=img_w, height=img_h)
+    story.append(rl_img)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
 # -----------------------------
 # MAPA (FIX anti-desaparición) 
 # -----------------------------
@@ -552,174 +983,6 @@ def build_map(selected_layer, opacity: float, wms_url: str, center, zoom, search
     add_exposure_legend(m)
     return m
 
-# -----------------------------
-# PRUEBA REPORTE MAPA
-# -----------------------------
-def deg2num(lat_deg, lon_deg, zoom):
-    lat_rad = math.radians(lat_deg)
-    n = 2.0 ** zoom
-    xtile = int((lon_deg + 180.0) / 360.0 * n)
-    ytile = int((1.0 - math.log(math.tan(lat_rad) + (1 / math.cos(lat_rad))) / math.pi) / 2.0 * n)
-    return xtile, ytile
-
-def get_basemap_image(center, zoom, provider="ESR"):
-    lat, lon = center
-    tile_size = 256
-
-    xtile, ytile = deg2num(lat, lon, zoom)
-    st.write(xtile)
-    st.write(ytile)
-    st.write(zoom)
-
-    tiles_range = 1  # cantidad de tiles alrededor del centro
-    full_img = Image.new("RGB", (tile_size * (tiles_range*2+1), tile_size * (tiles_range*2+1)))
-
-    for dx in range(-tiles_range, tiles_range+1):
-        for dy in range(-tiles_range, tiles_range+1):
-            x = xtile + dx
-            y = ytile + dy
-
-            if provider == "OSM":
-                url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
-            else:
-                url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{zoom}/{y}/{x}"
-
-            try:
-                r = requests.get(url, timeout=10)
-                tile = Image.open(BytesIO(r.content)).convert("RGB")
-                full_img.paste(tile, ((dx+tiles_range)*tile_size, (dy+tiles_range)*tile_size))
-            except:
-                pass
-
-    return full_img
-
-def get_wms_overlay(wms_url: str, layer_names: list, bbox, size_px: int):
-    minx, miny, maxx, maxy = bbox
-
-    base = Image.new("RGBA", (size_px, size_px), (0,0,0,0))
-
-    for lyr in layer_names:
-        params = {
-            "SERVICE": "WMS",
-            "REQUEST": "GetMap",
-            "VERSION": "1.1.1",
-            "LAYERS": lyr["name"],
-            "STYLES": "",
-            "SRS": "EPSG:4326",
-            "BBOX": f"{minx},{miny},{maxx},{maxy}",
-            "WIDTH": str(size_px),
-            "HEIGHT": str(size_px),
-            "FORMAT": "image/png",
-            "TRANSPARENT": "TRUE",
-        }
-
-        r = requests.get(wms_url, params=params, timeout=30, headers={"User-Agent": "streamlit-wms-viewer"})
-        img = Image.open(BytesIO(r.content)).convert("RGBA")
-        base = Image.alpha_composite(base, img)
-
-    return base
-
-def draw_polygon_on_image(img, polygon_feature, bbox, color=(0,0,0), width=4):
-    draw = ImageDraw.Draw(img)
-
-    poly = shape(polygon_feature["geometry"])
-
-    minx, miny, maxx, maxy = bbox
-    w, h = img.size
-
-    def to_px(lon, lat):
-        x = (lon - minx) / (maxx - minx) * w
-        y = (maxy - lat) / (maxy - miny) * h
-        return (x, y)
-
-    if isinstance(poly, Polygon):
-        coords = [to_px(x,y) for x,y in poly.exterior.coords]
-        draw.line(coords, fill=color, width=width)
-
-    return img
-
-def draw_legend(img):
-    draw = ImageDraw.Draw(img)
-
-    legend_items = [
-        ("Bajo", (170,206,172)),
-        ("Medio", (241,251,123)),
-        ("Alto", (247,162,72)),
-        ("Muy Alto", (240,38,28)),
-    ]
-
-    x0, y0 = 30, img.height - 180
-    box_size = 30
-
-    draw.rectangle([x0-15, y0-20, x0+220, y0+140], fill=(255,255,255,230))
-
-    for i, (label, color) in enumerate(legend_items):
-        y = y0 + i*35
-        draw.rectangle([x0, y, x0+box_size, y+box_size], fill=color)
-        draw.text((x0+45, y+5), label, fill=(0,0,0))
-
-    return img
-
-def generate_map_image():
-    # ✅ Verificar que exista polígono confirmado
-    if not st.session_state.get("polygon_geojson"):
-        raise ValueError("No existe polígono confirmado para generar el reporte.")
-    
-    size_px = 1024
-
-    # bbox desde polígono buffer
-    feature = st.session_state.polygon_buffer_geojson or st.session_state.polygon_geojson
-    poly = geojson_to_shapely(feature)
-    bbox = padded_bbox(poly, 0.1)
-
-    centroid = poly.centroid
-    center = [centroid.y, centroid.x]
-    zoom = st.session_state.map_zoom
-
-    basemap = get_basemap_image(center, zoom, provider="ESR")
-    st.image(basemap)
-    st.divider()
-    basemap = basemap.resize((size_px, size_px))
-    st.image(basemap)
-
-    overlay = get_wms_overlay(wms_url, st.session_state.selected_layer, bbox, size_px)
-
-    combined = Image.alpha_composite(basemap.convert("RGBA"), overlay)
-
-    combined = draw_polygon_on_image(combined, st.session_state.polygon_geojson, bbox, color=(0,0,0), width=6)
-
-    if st.session_state.polygon_buffer_geojson:
-        combined = draw_polygon_on_image(combined, st.session_state.polygon_buffer_geojson, bbox, color=(255,0,0), width=4)
-
-    combined = draw_legend(combined)
-
-    return combined
-
-def generate_pdf(map_image):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    elements = []
-
-    style = ParagraphStyle(
-        name="TitleStyle",
-        fontSize=18,
-        textColor=colors.HexColor("#003DA5"),
-        spaceAfter=20
-    )
-
-    elements.append(Paragraph("Reporte de Exposición a Incendios Forestales", style))
-    elements.append(Spacer(1, 20))
-
-    img_buffer = BytesIO()
-    map_image.save(img_buffer, format="PNG")
-    img_buffer.seek(0)
-
-    rl_img = RLImage(img_buffer, width=18*cm, height=18*cm)
-    elements.append(rl_img)
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
 
 # -----------------------------
 # SIDEBAR
@@ -760,8 +1023,8 @@ with st.sidebar:
         )
 
         addr = st.session_state.search_addr
-    
         colA, colB = st.columns([1, 1])
+
         with colA:
             do_search = st.form_submit_button("Buscar", use_container_width=True)
         with colB:
@@ -824,22 +1087,61 @@ with st.sidebar:
             st.rerun()
 
     # ============================================================
-    # 🖨️ BOTÓN: Guardar print (equivale a Ctrl+P -> Guardar como PDF)
+    # 🖨️ BOTÓN: Generar PDF
     # ============================================================
     st.divider()
-    st.header("🖨️ Guardar print (PDF)")
+    st.header("📄 Generar reporte PDF")
 
-    if st.button("📄 Generar Reporte PDF"):
-        with st.spinner("Generando reporte..."):
-            map_img = generate_map_image()
-            pdf_file = generate_pdf(map_img)
+    can_generate = (
+        st.session_state.polygon_ok
+        and st.session_state.polygon_geojson is not None
+        and st.session_state.polygon_buffer_geojson is not None
+    )
 
-            st.download_button(
-                label="⬇️ Descargar PDF",
-                data=pdf_file,
-                file_name="reporte_exposicion_incendios.pdf",
-                mime="application/pdf"
-            )
+    if not can_generate:
+        st.info("Dibuja y confirma un polígono para habilitar el reporte.")
+    else:
+        # ── Selector de capa base para el PDF ─────────────────────────
+        st.divider()
+        st.caption("🗺️ Capa base para el mapa")
+        base_layer_choice = st.radio(
+            "Capa base activa",
+            options=["OpenStreetMap", "Esri Satélite"],
+            index=0 if st.session_state.active_base_layer == "OpenStreetMap" else 1,
+            key="base_layer_radio",
+            help="Esta selección define la capa base que se usará en el PDF generado.",
+            label_visibility="collapsed",
+        )
+        st.session_state.active_base_layer = base_layer_choice
+
+        if st.button("🖨️ Generar PDF", use_container_width=True, type="primary"):
+            with st.spinner("Generando PDF…"):
+                try:
+                    # Obtener capas WMS seleccionadas (las del análisis o las globales)
+                    layers_for_pdf = (
+                        st.session_state.get("layer_for_analysis")
+                        or st.session_state.selected_layer   # fallback a las capas del selector global
+                    )
+
+                    map_img = compose_map_image(st.session_state.polygon_geojson, st.session_state.polygon_buffer_geojson,
+                                                layers_for_pdf, wms_url, st.session_state.active_base_layer,
+                                                opacity, target_px = 1024, timeout = timeout)
+
+                    pdf_bytes = generate_pdf(map_img)
+
+                    st.download_button(
+                        label = "⬇️ Descargar PDF",
+                        data = pdf_bytes,
+                        file_name = "reporte_exposicion_incendio.pdf",
+                        mime = "application/pdf",
+                        use_container_width = True,
+                    )
+                    st.success("✅ PDF generado correctamente.")
+
+                except Exception as e:
+                    st.error("Error al generar el PDF.")
+                    st.exception(e)
+
 
 # -----------------------------
 # CAPABILITIES + LAYERS
@@ -925,6 +1227,7 @@ if clear_clicked:
     st.session_state.polygon_geojson = None
     st.session_state.polygon_draft = None
     st.session_state.polygon_buffer_geojson = None
+    st.session_state.resultado_exposicion    = None
     st.rerun()
 
 if ok_clicked:
@@ -984,7 +1287,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
         st.warning("Selecciona al menos una capa WMS para calcular exposición.")
     else:
         # Ahora se puede analizar más de una capa para un mismo polígono
-        layer_for_analysis = st.multiselect(
+        st.multiselect(
             "Región a analizar",
             options=st.session_state.selected_layer,
             format_func=lambda x: x["title"],
@@ -999,7 +1302,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 bbox = padded_bbox(poly, pad_ratio=0.03)
 
                 size_px = 512
-                img = wms_getmap_png(wms_url, layer_for_analysis, bbox, size_px, timeout)
+                img = wms_getmap_png(wms_url, st.session_state.layer_for_analysis, bbox, size_px, timeout)
                 mask = polygon_mask_in_bbox(poly, bbox, size_px, size_px)
 
                 dominante = predominant_scale_in_polygon(img, mask)
@@ -1007,7 +1310,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 # ✅ Guardar resultado para que NO se pierda al imprimir / rerun
                 st.session_state.resultado_exposicion = {
                     "dominante": dominante,
-                    "layer": [l["title"] for l in layer_for_analysis],
+                    "layer": [l["title"] for l in st.session_state.layer_for_analysis],
                 }
 
                 st.success("✅ Exposición calculada y guardada.")
