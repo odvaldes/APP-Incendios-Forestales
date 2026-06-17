@@ -5,7 +5,6 @@ Created on Wed Jan 21 10:34:42 2026
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import xml.etree.ElementTree as ET
 import folium
@@ -29,9 +28,11 @@ import mercantile
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -165,7 +166,7 @@ if "layer_for_analysis" not in st.session_state:
 
 # ✅ NUEVO: rastrea capa base activa.
 if "active_base_layer" not in st.session_state:
-    st.session_state.active_base_layer = "OpenStreetMap"
+    st.session_state.active_base_layer = "Esri Satélite"
 
 # -----------------------------
 # BUSCADOR DE DIRECCIONES (Nominatim / OSM)
@@ -807,7 +808,7 @@ def generate_pdf(map_image: Image.Image) -> bytes:
     story = []
 
     # Bloque de título con fondo azul institucional
-    title_text = "Visor de Exposición a la Amenaza de Incendios Forestales"
+    title_text = "<b>Visor de Exposición a la Amenaza de Incendios Forestales</b>"
 
     title_style = ParagraphStyle(
     name='title',
@@ -1102,12 +1103,11 @@ with st.sidebar:
         st.info("Dibuja y confirma un polígono para habilitar el reporte.")
     else:
         # ── Selector de capa base para el PDF ─────────────────────────
-        st.divider()
         st.caption("🗺️ Capa base para el mapa")
         base_layer_choice = st.radio(
             "Capa base activa",
             options=["OpenStreetMap", "Esri Satélite"],
-            index=0 if st.session_state.active_base_layer == "OpenStreetMap" else 1,
+            index=1,
             key="base_layer_radio",
             help="Esta selección define la capa base que se usará en el PDF generado.",
             label_visibility="collapsed",
@@ -1129,10 +1129,13 @@ with st.sidebar:
 
                     pdf_bytes = generate_pdf(map_img)
 
+                    today = datetime.now(ZoneInfo("America/Santiago"))
+                    pdf_name = today.strftime("reporte_exposicion_incendio-%Y-%m-%d_%H%M.pdf")
+
                     st.download_button(
                         label = "⬇️ Descargar PDF",
                         data = pdf_bytes,
-                        file_name = "reporte_exposicion_incendio.pdf",
+                        file_name = pdf_name,
                         mime = "application/pdf",
                         use_container_width = True,
                     )
