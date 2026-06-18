@@ -25,10 +25,10 @@ from pyproj import Transformer # Requerimiento nuevo agregado 'pyproj'
 import mercantile
 
 # ReportLab
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from datetime import datetime
@@ -238,10 +238,33 @@ def choose_zoom_for_bbox(minx, miny, maxx, maxy, target_px: int = 800) -> int:
             return z
     return 8
 
+def make_bbox_square(bbox: tuple) -> tuple:
+    """
+    Recibe (minx, miny, maxx, maxy) y devuelve un bbox cuadrado
+    expandiendo el lado más corto para igualar al lado más largo.
+    Así la imagen resultante es cuadrada sin distorsión.
+    """
+    minx, miny, maxx, maxy = bbox
+    dx = maxx - minx
+    dy = maxy - miny
+
+    if dx > dy:
+        # Expandir en Y para igualar X
+        diff = (dx - dy) / 2
+        miny -= diff
+        maxy += diff
+    elif dy > dx:
+        # Expandir en X para igualar Y
+        diff = (dy - dx) / 2
+        minx -= diff
+        maxx += diff
+
+    return (minx, miny, maxx, maxy)
+
 def build_base_map_image(
     bbox,                    # (minx, miny, maxx, maxy) en EPSG:4326
     layer_name: str,         # "OpenStreetMap" o "Esri Satélite"
-    target_size: int = 1024, # píxeles del lado mayor de la imagen final
+    target_size: int = 1280, # píxeles del lado mayor de la imagen final
     timeout: int = 20,
 ) -> tuple[Image.Image, tuple]:
     """
@@ -307,7 +330,7 @@ def build_base_map_image(
     new_w, new_h = int(w * ratio), int(h * ratio)
     cropped = cropped.resize((new_w, new_h), Image.LANCZOS)
 
-    return cropped, (minx, miny, maxx, maxy)
+    return cropped
     
 # -----------------------------
 # FUNCIONES WMS (capabilities)
@@ -610,96 +633,33 @@ def _draw_dashed_line(draw: ImageDraw.Draw, points, color, width=3,
             pos = seg_end
             drawing = not drawing
 
-def _add_legend(base_img: Image.Image) -> Image.Image:
-    """
-    Añade una leyenda de exposición en la esquina inferior izquierda.
-    Devuelve la imagen con la leyenda incrustada.
-    """
-    # Configuración
-    padding   = 12
-    box_size  = 18
-    gap       = 8
-    font_size = 18
-    line_h    = box_size + 6
 
-    items = [
-        ("Bajo",     (170, 206, 172, 255)),
-        ("Medio",    (241, 251, 123, 255)),
-        ("Alto",     (247, 162,  72, 255)),
-        ("Muy Alto", (240,  38,  28, 255)),
-    ]
-
-    title_text = "Exposición"
-    n_items    = len(items)
-    legend_w   = 160
-    legend_h   = padding + line_h + padding + 1 + padding + n_items * (line_h + 4) + padding
-
-    legend = Image.new("RGBA", (legend_w, legend_h), (255, 255, 255, 220))
-    ld     = ImageDraw.Draw(legend)
-
-    # Intentar cargar fuente; si falla usar default
-    try:
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-        font_item  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size - 2)
-    except Exception:
-        font_title = ImageFont.load_default()
-        font_item  = font_title
-
-    # Borde
-    ld.rectangle([(0, 0), (legend_w - 1, legend_h - 1)],
-                 outline=(0, 0, 0, 200), width=2)
-
-    # Título
-    ld.text((padding, padding), title_text, fill=(0, 0, 0, 255), font=font_title)
-    y_line = padding + line_h
-    ld.line([(0, y_line), (legend_w, y_line)], fill=(0, 0, 0, 180), width=1)
-
-    # Ítems
-    y = y_line + padding
-    for label, color in items:
-        ld.rectangle([(padding, y), (padding + box_size, y + box_size)],
-                     fill=color, outline=(30, 30, 30, 255), width=1)
-        ld.text((padding + box_size + gap, y + 1), label,
-                fill=(0, 0, 0, 255), font=font_item)
-        y += line_h + 4
-
-    # Pegar leyenda en la imagen base (esquina inferior izquierda)
-    result = base_img.copy().convert("RGBA")
-    margin = 16
-    pos_x  = margin
-    pos_y  = result.height - legend_h - margin
-    result.paste(legend, (pos_x, pos_y), legend)
-    return result
-
-
-def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
+def compose_map_image(polygon_geojson: dict, buffer_geojson: dict,
                       wms_layers: list, wms_url: str, base_layer_name: str,
-                      wms_opacity: float = 0.75, target_px: int = 1024, timeout: int = 25) -> Image.Image:
-    
-    # ── 1. Geometrías ──────────────────────────────────────────────
+                      wms_opacity: float = 0.75, target_px: int = 1280,
+                      timeout: int = 25) -> Image.Image:
+
+    # Geometrías del polígono y su buffer.
     buf_geom  = geojson_to_shapely(buffer_geojson)
     orig_geom = geojson_to_shapely(polygon_geojson)
 
-    # Bbox con padding generoso para contexto (25 %)
+    # Bbox con padding generoso (25 %) y luego forzar cuadrado
     bbox = bbox_with_padding(buf_geom, pad_ratio=0.25)
-    minx, miny, maxx, maxy = bbox
+    bbox = make_bbox_square(bbox)          # ← NUEVO: forzar bbox cuadrado
 
     # ── 2. Capa base ───────────────────────────────────────────────
-    base_img, _ = build_base_map_image(
+    base_img = build_base_map_image(
         bbox, base_layer_name, target_size=target_px, timeout=timeout
     )
     w, h = base_img.size
 
     # ── 3. Capas WMS ───────────────────────────────────────────────
     if wms_layers:
-        # Pedir WMS con las mismas dimensiones que la imagen base
         wms_imgs = wms_getmap_png(wms_url, wms_layers, bbox, max(w, h), timeout)
 
         for wms_img in wms_imgs:
-            # Redimensionar WMS a tamaño de la base
             wms_resized = wms_img.resize((w, h), Image.LANCZOS)
 
-            # Aplicar opacidad al canal alpha
             r_ch, g_ch, b_ch, a_ch = wms_resized.split()
             a_arr = np.array(a_ch, dtype=np.float32)
             a_arr = (a_arr * wms_opacity).clip(0, 255).astype(np.uint8)
@@ -710,24 +670,20 @@ def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
     base_img = base_img.convert("RGBA")
 
     # ── 4. Dibujar polígono original ───────────────────────────────
-    fill_orig    = (96, 165, 250, 60)    # azul semitransparente
-    outline_orig = (17,  24,  39, 230)   # casi negro
+    fill_orig    = (96, 165, 250, 60)
+    outline_orig = (17, 24, 39, 230)
 
     overlay_orig = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     od           = ImageDraw.Draw(overlay_orig)
 
-    def draw_poly_fill(p: Polygon, fill):
-        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
-        if len(pts) >= 3:
-            od.polygon(pts, fill=fill)
-
     polys_orig = orig_geom.geoms if isinstance(orig_geom, MultiPolygon) else [orig_geom]
     for p in polys_orig:
-        draw_poly_fill(p, fill_orig)
+        pts = _geom_to_px(p.exterior.coords, bbox, w, h)
+        if len(pts) >= 3:
+            od.polygon(pts, fill=fill_orig)
 
     base_img = Image.alpha_composite(base_img, overlay_orig)
 
-    # Contorno del polígono original (sólido)
     final_draw = ImageDraw.Draw(base_img)
     for p in polys_orig:
         pts = _geom_to_px(p.exterior.coords, bbox, w, h)
@@ -735,8 +691,8 @@ def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
             final_draw.line(pts + [pts[0]], fill=outline_orig, width=3)
 
     # ── 5. Dibujar buffer (rojo guionado) ──────────────────────────
-    fill_buf    = (220, 38, 38, 45)     # rojo semitransparente
-    outline_buf = (220, 38, 38, 230)    # rojo sólido
+    fill_buf    = (220, 38, 38, 45)
+    outline_buf = (220, 38, 38, 230)
 
     overlay_buf = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     bd          = ImageDraw.Draw(overlay_buf)
@@ -757,9 +713,6 @@ def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
                               color=outline_buf, width=3,
                               dash_len=14, gap_len=7)
 
-    # ── 6. Leyenda ─────────────────────────────────────────────────
-    base_img = _add_legend(base_img)
-
     return base_img.convert("RGB")
 
 
@@ -770,79 +723,206 @@ def compose_map_image(polygon_geojson: dict, buffer_geojson:  dict,
 def generate_pdf(map_image: Image.Image) -> bytes:
     """
     Construye el PDF con ReportLab:
-      - Página en vertical
-      - Título institucional
-      - Imagen del mapa centrada
+      - Página Letter vertical
+      - Título institucional general
+      - Subtítulo "Mapa exposición a incendios del proyecto"
+      - Imagen del mapa en tamaño fijo cuadrado (recorte centrado)
+      - Leyenda horizontal debajo del mapa con texto nativo ReportLab
     Devuelve los bytes del PDF.
     """
     buffer = BytesIO()
 
-    page_w, page_h = A4
-    margin = 1.5 * cm
+    page_w, page_h = letter
+    margin = 2.5 * cm
+    usable_w = page_w - 2 * margin
 
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
+        pagesize=letter,
         leftMargin=margin,
         rightMargin=margin,
         topMargin=margin,
         bottomMargin=margin,
     )
 
-    styles = getSampleStyleSheet()
-
-    # ── Estilo del título ──────────────────────────────────────────
+    # ── Estilos de texto ───────────────────────────────────────────
     title_style = ParagraphStyle(
-        "TituloInstitucional",
-        parent=styles["Normal"],
+        name="TituloInstitucional",
         fontName="Helvetica-Bold",
         fontSize=16,
-        textColor=colors.white,
+        textColor=colors.HexColor('#1A3C6E'),
         alignment=TA_CENTER,
         spaceAfter=0,
         spaceBefore=0,
         leading=20,
     )
 
-    # ── Contenido ──────────────────────────────────────────────────
-    story = []
-
-    # Bloque de título con fondo azul institucional
-    title_text = "<b>Visor de Exposición a la Amenaza de Incendios Forestales</b>"
-
-    title_style = ParagraphStyle(
-    name='title',
-    fontSize=18,
-    leading=28,
-    alignment=1, # 0 = Izquierda, 1 = Centro, 2 = Derecha
-    textColor=colors.HexColor('#1A3C6E'),
-    spaceAfter=20
+    map_title_style = ParagraphStyle(
+        name="TituloMapa",
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        textColor=colors.HexColor('#1A3C6E'),
+        alignment=TA_LEFT,
+        spaceAfter=4,
+        spaceBefore=0,
+        leading=16,
     )
 
-    title_pdf  = Paragraph(title_text, title_style)
-    usable_w    = page_w - 2 * margin
+    # ── Story ──────────────────────────────────────────────────────
+    story = []
 
-    story.append(title_pdf)
+    # ── 1. Título institucional ────────────────────────────────────
+    story.append(Paragraph(
+        "<b>Visor de Exposición a la Amenaza de Incendios Forestales</b>",
+        title_style
+    ))
     story.append(Spacer(1, 0.4 * cm))
 
-    # ── Imagen del mapa ────────────────────────────────────────────
-    img_buffer = BytesIO()
-    map_image.save(img_buffer, format="PNG", dpi=(150, 150))
-    img_buffer.seek(0)
+    # ── 2. Subtítulo sobre el mapa ─────────────────────────────────
+    story.append(Paragraph(
+        "Mapa exposición a incendios del proyecto",
+        map_title_style
+    ))
+    story.append(Spacer(1, 0.3 * cm))
 
-    # Calcular dimensiones para que quepa en la página
-    usable_h = page_h - 2 * margin - 2.2 * cm   # espacio que queda tras título
-    map_w_px, map_h_px = map_image.size
-    aspect    = map_w_px / map_h_px
-    img_h     = min(usable_h, usable_w / aspect)
-    img_w     = img_h * aspect
-    if img_w > usable_w:
-        img_w = usable_w
-        img_h = img_w / aspect
+    # ── 3. Imagen del mapa (cuadrada, tamaño fijo) ─────────────────
+    map_box_size = usable_w
 
-    rl_img = RLImage(img_buffer, width=img_w, height=img_h)
-    story.append(rl_img)
+    img_w, img_h = map_image.size
+    side   = min(img_w, img_h)
+    left   = (img_w - side) // 2
+    top    = (img_h - side) // 2
+    right  = left + side
+    bottom = top  + side
+    map_cropped = map_image.crop((left, top, right, bottom))
 
+    img_buf = BytesIO()
+    map_cropped.save(img_buf, format="PNG", dpi=(150, 150))
+    img_buf.seek(0)
+
+    rl_img = RLImage(img_buf, width=map_box_size, height=map_box_size)
+    rl_img_container = [[rl_img]]
+    rl_img_table = Table(rl_img_container)
+
+    rl_img_table.setStyle(TableStyle([
+    ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#000000")), 
+    ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+    ('TOPPADDING', (0,0), (-1,-1), 0),
+    ('LEFTPADDING', (0,0), (-1,-1), 0),
+    ('RIGHTPADDING', (0,0), (-1,-1), 0),
+    ]))
+
+    story.append(rl_img_table)
+    story.append(Spacer(1, 0.3 * cm))
+
+    # ── 4. Leyenda horizontal con ReportLab nativo ─────────────────
+    
+    # Medidas
+    color_box_size = 0.55 * cm          # lado del cuadrado de color
+    col_gap        = 0.22 * cm          # espacio entre cuadrado y etiqueta
+    row0_h         = 0.55 * cm          # alto de la fila del título
+    row1_h         = 1 * cm          # alto de la fila de ítems
+
+    legend_items_data = [
+        ("Bajo",     colors.HexColor('#AACEAC')),
+        ("Medio",    colors.HexColor('#F1FB7B')),
+        ("Alto",     colors.HexColor('#F7A248')),
+        ("Muy Alto", colors.HexColor('#F0261C')),
+    ]
+
+    n_items    = len(legend_items_data)           # 4
+    item_col_w = (usable_w / n_items) / 1.4               # ancho equitativo por columna
+
+    # ── Estilos de texto de la leyenda ─────────────────────────────
+    legend_title_style = ParagraphStyle(
+        name="TituloLeyenda",
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        textColor=colors.HexColor('#1A3C6E'),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=15,
+    )
+
+    legend_label_style = ParagraphStyle(
+        name="EtiquetaLeyenda",
+        fontName="Helvetica",
+        fontSize=12,
+        textColor=colors.HexColor('#1A1A1A'),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=14,
+    )
+
+    # ── Fila 0: título "Exposición" + celdas vacías ────────────────
+    # Una celda con el texto y el resto vacías (se verán en blanco)
+    row0 = [Paragraph("Exposición", legend_title_style)] + [""] * (n_items - 1)
+
+    # ── Fila 1: ítems [cuadrado color + etiqueta] ──────────────────
+    # Cada ítem es una micro-tabla de 1 fila × 2 columnas:
+    #   col 0 → celda vacía con BACKGROUND de color (el cuadrado)
+    #   col 1 → Paragraph con la etiqueta
+
+    def make_item_cell(label: str, box_color) -> Table:
+        """
+        Micro-tabla 1×2:
+          [ cuadrado de color ] [ etiqueta de texto ]
+        """
+        color_cell = ""                                        # fondo gestionado por TableStyle
+        text_cell  = Paragraph(label, legend_label_style)
+
+        box_col_w  = color_box_size
+        text_col_w = item_col_w - color_box_size - col_gap    # resto del ancho disponible
+
+        inner = Table(
+            [[color_cell, text_cell]],
+            colWidths=[box_col_w, text_col_w],
+            rowHeights=[color_box_size],
+        )
+        inner.setStyle(TableStyle([
+            # Color de fondo del cuadrado
+            ("BACKGROUND",    (0, 0), (0, 0), box_color),
+            # Borde fino del cuadrado
+            ("BOX",           (0, 0), (0, 0), 0.5, colors.HexColor('#282828')),
+            # Alineación vertical centrada en toda la micro-tabla
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            # Padding cero en el cuadrado
+            ("LEFTPADDING",   (0, 0), (0, 0), 0),
+            ("RIGHTPADDING",  (0, 0), (0, 0), 0),
+            ("TOPPADDING",    (0, 0), (0, 0), 0),
+            ("BOTTOMPADDING", (0, 0), (0, 0), 0),
+            # Padding izquierdo en la etiqueta (separa del cuadrado)
+            ("LEFTPADDING",   (1, 0), (1, 0), col_gap),
+            ("RIGHTPADDING",  (1, 0), (1, 0), 0),
+            ("TOPPADDING",    (1, 0), (1, 0), 0),
+            ("BOTTOMPADDING", (1, 0), (1, 0), 0),
+        ]))
+        return inner
+
+    row1 = [make_item_cell(label, color) for label, color in legend_items_data]
+
+    # ── Tabla principal de 2 filas ─────────────────────────────────
+    legend_table = Table(
+        [row0, row1],
+        colWidths=[item_col_w] * n_items,
+        rowHeights=[row0_h, row1_h],
+        hAlign='LEFT'
+    )
+    legend_table.setStyle(TableStyle([
+        # Alineación vertical centrada en todas las celdas
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        # Sin padding en ninguna celda de la tabla principal
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    story.append(legend_table)
+
+    # ── 5. Construir PDF ───────────────────────────────────────────
     doc.build(story)
     buffer.seek(0)
     return buffer.read()
@@ -1125,7 +1205,7 @@ with st.sidebar:
 
                     map_img = compose_map_image(st.session_state.polygon_geojson, st.session_state.polygon_buffer_geojson,
                                                 layers_for_pdf, wms_url, st.session_state.active_base_layer,
-                                                opacity, target_px = 1024, timeout = timeout)
+                                                opacity, target_px = 1280, timeout = timeout)
 
                     pdf_bytes = generate_pdf(map_img)
 
