@@ -161,8 +161,6 @@ if "polygon_buffer_geojson" not in st.session_state:
 
 if "selected_layer" not in st.session_state:
     st.session_state.selected_layer = []
-if "layer_for_analysis" not in st.session_state:
-    st.session_state.layer_for_analysis = []
 
 # ✅ NUEVO: rastrea capa base activa.
 if "active_base_layer" not in st.session_state:
@@ -1197,14 +1195,8 @@ with st.sidebar:
         if st.button("🖨️ Generar PDF", use_container_width=True, type="primary"):
             with st.spinner("Generando PDF…"):
                 try:
-                    # Obtener capas WMS seleccionadas (las del análisis o las globales)
-                    layers_for_pdf = (
-                        st.session_state.get("layer_for_analysis")
-                        or st.session_state.selected_layer   # fallback a las capas del selector global
-                    )
-
                     map_img = compose_map_image(st.session_state.polygon_geojson, st.session_state.polygon_buffer_geojson,
-                                                layers_for_pdf, wms_url, st.session_state.active_base_layer,
+                                                st.session_state.selected_layer, wms_url, st.session_state.active_base_layer,
                                                 opacity, target_px = 1280, timeout = timeout)
 
                     pdf_bytes = generate_pdf(map_img)
@@ -1369,14 +1361,6 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
     if not st.session_state.selected_layer:
         st.warning("Selecciona al menos una capa WMS para calcular exposición.")
     else:
-        # Ahora se puede analizar más de una capa para un mismo polígono
-        st.multiselect(
-            "Región a analizar",
-            options=st.session_state.selected_layer,
-            format_func=lambda x: x["title"],
-            default=st.session_state.selected_layer,
-            key="layer_for_analysis"
-        )
         # Botón calcula y GUARDA en session_state
         if st.button("Calcular exposición", type="primary"):
             try:
@@ -1385,7 +1369,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 bbox = padded_bbox(poly, pad_ratio=0.03)
 
                 size_px = 512
-                img = wms_getmap_png(wms_url, st.session_state.layer_for_analysis, bbox, size_px, timeout)
+                img = wms_getmap_png(wms_url, st.session_state.selected_layer, bbox, size_px, timeout)
                 mask = polygon_mask_in_bbox(poly, bbox, size_px, size_px)
 
                 dominante = predominant_scale_in_polygon(img, mask)
@@ -1393,7 +1377,7 @@ if st.session_state.polygon_ok and st.session_state.polygon_geojson:
                 # ✅ Guardar resultado para que NO se pierda al imprimir / rerun
                 st.session_state.resultado_exposicion = {
                     "dominante": dominante,
-                    "layer": [l["title"] for l in st.session_state.layer_for_analysis],
+                    "layer": [l["title"] for l in st.session_state.selected_layer],
                 }
 
                 st.success("✅ Exposición calculada y guardada.")
