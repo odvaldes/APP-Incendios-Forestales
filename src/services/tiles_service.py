@@ -26,7 +26,7 @@ def _tile_url_esri(x: int, y: int, z: int) -> str:
 def _download_tile(url: str, timeout: int = 15) -> Image.Image:
     """Descarga un tile y devuelve imagen RGBA."""
     headers = {"User-Agent": "streamlit-visor-senapred/1.0"}
-    r = requests.get(url, timeout=timeout, headers=headers)
+    r = requests.get(url, timeout=timeout, headers=headers, verify=False)
     r.raise_for_status()
     return Image.open(BytesIO(r.content)).convert("RGBA")
 

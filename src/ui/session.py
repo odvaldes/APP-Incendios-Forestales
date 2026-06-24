@@ -48,3 +48,8 @@ def init_session_state():
     # Rastrea capa base activa.
     if "active_base_layer" not in st.session_state:
         st.session_state.active_base_layer = "Esri Satélite"
+
+    if "addr_poly_pdf" not in st.session_state:
+        st.session_state.addr_poly_pdf = ""
+    
+    

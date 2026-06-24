@@ -1,10 +1,12 @@
 from io import BytesIO
 from PIL import Image
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, PageBreak, Spacer, Image as RLImage, Table, TableStyle
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
@@ -15,7 +17,7 @@ from config.constants import LOGO_PATH
 # GENERACIÓN DEL PDF CON REPORTLAB
 # =========================
 
-def generate_pdf(map_image: Image.Image) -> bytes:
+def generate_pdf(map_image: Image.Image, addr_poly: str):
 
     # ==========================================================
     # Estilos para el PDF
@@ -25,23 +27,34 @@ def generate_pdf(map_image: Image.Image) -> bytes:
     title_style = ParagraphStyle(
         name="TituloPrincipal",
         fontName="Helvetica-Bold",
-        fontSize=16,
+        fontSize=18,
         textColor=colors.HexColor('#1A3C6E'),
         alignment=TA_CENTER,
         spaceAfter=0,
         spaceBefore=0,
-        leading=20,
+        leading=22,
     )
 
-    map_title_style = ParagraphStyle(
-        name="TituloMapa",
+    sub_title_style = ParagraphStyle(
+        name="TituloSecundario",
         fontName="Helvetica-Bold",
         fontSize=16,
         textColor=colors.HexColor('#1A3C6E'),
-        alignment=TA_LEFT,
+        alignment=TA_CENTER,
         spaceAfter=4,
         spaceBefore=0,
-        leading=16,
+        leading=19,
+    )
+
+    date_title_style = ParagraphStyle(
+        name="TituloFecha",
+        fontName="Helvetica",
+        fontSize=12,
+        textColor=colors.HexColor('#1A1A1A'),
+        alignment=TA_CENTER,
+        spaceAfter=4,
+        spaceBefore=0,
+        leading=14,
     )
 
     # ── Estilos de texto de la leyenda ─────────────────────────────
@@ -72,6 +85,7 @@ def generate_pdf(map_image: Image.Image) -> bytes:
     # ==========================================================
 
     buffer = BytesIO()
+    today = datetime.now(ZoneInfo("America/Santiago"))
 
     page_w, page_h = letter     # ancho y altura total del documento
     side_margin = 2.5 * cm      # margen de los lados
@@ -187,7 +201,7 @@ def generate_pdf(map_image: Image.Image) -> bytes:
 
         # ── Número de página ───────────────────────────────────
         page_num = canvas_obj.getPageNumber()
-        canvas_obj.setFont("Helvetica", 8)
+        canvas_obj.setFont("Helvetica", 10)
         canvas_obj.setFillColor(colors.HexColor('#6B7280'))
         canvas_obj.drawRightString(
             page_w - side_margin,
@@ -208,15 +222,48 @@ def generate_pdf(map_image: Image.Image) -> bytes:
 
     # ── Título principal ────────────────────────────────────
     story.append(Paragraph(
-        "<b>Visor de Exposición a la Amenaza de Incendios Forestales</b>",
+        "<b>Exposición a la Amenaza de Incendios Forestales</b>",
         title_style
     ))
-    story.append(Spacer(1, 0.4 * cm))
+    story.append(Spacer(1, 0.1 * cm))
+
+    story.append(Paragraph(
+        addr_poly,
+        sub_title_style
+    ))
+    story.append(Spacer(1, 0.1 * cm))
+
+    story.append(Paragraph(
+        today.strftime("<b>Fecha de generación del reporte:</b> %d/%m/%Y"),
+        date_title_style
+    ))
+    story.append(Spacer(1, 0.3 * cm))
+
+    expo_data = [["Región analizada", "Nivel de exposición"],
+                ["prueba 1","prueba 2"]]
+
+    col_expo_w = usable_w / 2 - side_margin
+    table_expo = Table(expo_data, colWidths=[col_expo_w, col_expo_w])
+
+    style_table_expo = TableStyle([
+    ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#1A5276')),       
+    ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke), # Texto blanco para la primera fila
+    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),            # Centrar todo el texto
+    ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),   # Negrita en la primera fila
+    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),          # Relleno inferior en las celdas
+    ('BACKGROUND', (0, 1), (-1, -1), colors.white),    # Fondo beige para el resto
+    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC')),       # Dibujar las líneas de la cuadrícula
+    ])
+    table_expo.setStyle(style_table_expo)
+
+    story.append(table_expo)
+
+    story.append(PageBreak())
 
     # ── Título para el mapa ─────────────────────────────────
     story.append(Paragraph(
         "Mapa exposición a incendios del proyecto",
-        map_title_style
+        sub_title_style
     ))
     story.append(Spacer(1, 0.3 * cm))
 
@@ -347,4 +394,6 @@ def generate_pdf(map_image: Image.Image) -> bytes:
     )
     buffer.seek(0)
 
-    return buffer.read()
+    pdf_name = today.strftime("reporte_exposicion_incendio-%Y-%m-%d_%H%M.pdf")
+
+    return buffer.read(), pdf_name

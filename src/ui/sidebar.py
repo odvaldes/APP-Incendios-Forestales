@@ -1,6 +1,4 @@
 import streamlit as st
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from config.constants import DEFAULT_WMS, DEFAULT_TIMEOUT
 from src.services.geocoding import geocode_nominatim
@@ -127,7 +125,7 @@ def render_sidebar() -> tuple:
             st.info("Dibuja y confirma un polígono para habilitar el reporte.")
         else:
             # ── Selector de capa base para el PDF ─────────────────────────
-            base_layer_choice = st.radio(
+            st.session_state.base_layer_pdf = st.radio(
                 "🗺️ Capa base para el mapa",
                 options=["OpenStreetMap", "Esri Satélite"],
                 index=1,
@@ -135,7 +133,13 @@ def render_sidebar() -> tuple:
                 help="Esta selección define la capa base que se usará en el PDF generado.",
                 label_visibility="visible",
             )
-            st.session_state.active_base_layer = base_layer_choice
+
+            st.session_state.addr_poly_pdf = st.text_input(
+                "📍 Dirección del proyecto",
+                value="",
+                placeholder="Ej: Av. Libertador Bernardo O'Higgins 1111, Santiago",
+                help="Se mostrará esta direción en el PDF generado.",
+            )
 
             if st.button("🖨️ Generar PDF", use_container_width=True, type="primary"):
                 with st.spinner("Generando PDF…"):
@@ -145,16 +149,14 @@ def render_sidebar() -> tuple:
                             st.session_state.polygon_buffer_geojson,
                             st.session_state.selected_layer,
                             wms_url,
-                            st.session_state.active_base_layer,
+                            st.session_state.base_layer_pdf,
                             opacity,
                             target_px=1280,
                             timeout=timeout
                         )
 
-                        pdf_bytes = generate_pdf(map_img)
-
-                        today    = datetime.now(ZoneInfo("America/Santiago"))
-                        pdf_name = today.strftime("reporte_exposicion_incendio-%Y-%m-%d_%H%M.pdf")
+                        pdf_bytes, pdf_name = generate_pdf(map_img,
+                                                           st.session_state.addr_poly_pdf)
 
                         st.download_button(
                             label="⬇️ Descargar PDF",
