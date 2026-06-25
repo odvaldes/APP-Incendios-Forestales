@@ -1,0 +1,9 @@
+[server]
+# Detecta cambios en todos los archivos del proyecto
+fileWatcherType = "poll"
+enableCORS = false
+enableXsrfProtection = false
+
+[runner]
+# Recarga inmediata al detectar cambios
+fastReruns = true
