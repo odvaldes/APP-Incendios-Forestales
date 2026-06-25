@@ -119,6 +119,7 @@ def render_sidebar() -> tuple:
             st.session_state.polygon_ok
             and st.session_state.polygon_geojson is not None
             and st.session_state.polygon_buffer_geojson is not None
+            and st.session_state.expo_result is not None
         )
 
         if not can_generate:
@@ -156,7 +157,9 @@ def render_sidebar() -> tuple:
                         )
 
                         pdf_bytes, pdf_name = generate_pdf(map_img,
-                                                           st.session_state.addr_poly_pdf)
+                                                           st.session_state.addr_poly_pdf,
+                                                           st.session_state.expo_result,
+                                                           st.session_state.final_comments)
 
                         st.download_button(
                             label="⬇️ Descargar PDF",

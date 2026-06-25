@@ -10,7 +10,7 @@ Geom = Union[Polygon, MultiPolygon]
 
 
 def badge_html(level: str) -> str:
-    cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin dato": "sindato"}.get(level, "muted")
+    cls = {"Bajo": "bajo", "Medio": "medio", "Alto": "alto", "Muy Alto": "muyalto", "Sin Dato": "sindato"}.get(level, "muted")
     return f'<span class="badge {cls}">{level}</span>'
 
 

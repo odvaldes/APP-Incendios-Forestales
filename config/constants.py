@@ -52,4 +52,4 @@ ANCHORS_RGB = {
 }
 
 # Niveles de exposición (índice = prioridad)
-EXPOSURE_LEVELS = ["Sin dato", "Bajo", "Medio", "Alto", "Muy Alto"]
+EXPOSURE_LEVELS = ["Sin Dato", "Bajo", "Medio", "Alto", "Muy Alto"]

@@ -93,11 +93,11 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
         st.session_state.polygon_geojson        = None
         st.session_state.polygon_draft          = None
         st.session_state.polygon_buffer_geojson = None
-        st.session_state.resultado_exposicion   = None
+        st.session_state.expo_result   = None
         st.rerun()
 
     if ok_clicked:
-        st.session_state.resultado_exposicion = None
+        st.session_state.expo_result = None
         prev = st.session_state.get("mapa_directo", {})
         if isinstance(prev, dict):
             c = prev.get("center")
@@ -124,7 +124,7 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
     # -----------------------------
     # SIMBOLOGÍA
     # -----------------------------
-    st.markdown("### Simbología de categorías de exposición")
+    st.markdown("### Simbología niveles de exposición")
     st.markdown(
         """
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -132,15 +132,16 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
           <span class="badge medio">Medio</span>
           <span class="badge alto">Alto</span>
           <span class="badge muyalto">Muy Alto</span>
-          <span class="badge sindato">Sin dato</span>
+          <span class="badge sindato">Sin Dato</span>
         </div>
         <div class="muted" style="margin-top:0.35rem;">
-          Interpretación: la exposición se determina por el <b>nivel de exposición de mayor riesgo encontrado</b> 
+          <b>Nota:</b> La exposición se determina por el nivel de exposición de mayor riesgo encontrado 
           dentro del área de análisis (polígono original + buffer de 100m).
         </div>
         """,
         unsafe_allow_html=True
     )
+    st.html("<div style='margin-bottom: 1px;'></div>")
 
     # -----------------------------
     # RESULTADO (PERSISTENTE)
@@ -163,7 +164,7 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
                     dominante = predominant_scale_in_polygon(img, mask)
 
                     # Guardar resultado para que NO se pierda al imprimir / rerun
-                    st.session_state.resultado_exposicion = {
+                    st.session_state.expo_result = {
                         "dominante": dominante,
                         "layer": [l["title"] for l in st.session_state.selected_layer],
                     }
@@ -175,9 +176,9 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
                     st.exception(e)
 
             # Mostrar SIEMPRE el resultado guardado (si existe)
-            if st.session_state.resultado_exposicion is not None:
-                dom = st.session_state.resultado_exposicion["dominante"]
-                lyr = st.session_state.resultado_exposicion["layer"]
+            if st.session_state.expo_result is not None:
+                dom = st.session_state.expo_result["dominante"]
+                lyr = st.session_state.expo_result["layer"]
 
                 st.markdown(
                     f"""
@@ -194,9 +195,9 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
 
                 # COMENTARIOS: también fuera del if calc, para que siempre aparezca y se imprima
                 st.markdown("### 📝 Comentarios finales del análisis")
-                st.session_state.comentarios_finales = st.text_area(
+                st.session_state.final_comments = st.text_area(
                     "Ingrese observaciones, supuestos técnicos o consideraciones adicionales:",
-                    value=st.session_state.comentarios_finales,
+                    value=st.session_state.final_comments,
                     height=150,
                     placeholder=(
                         "Ej: Se observa mayor concentración de exposición Muy Alto en el borde oriente del polígono. "

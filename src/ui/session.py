@@ -16,8 +16,8 @@ def init_session_state():
         st.session_state.polygon_draft = None    # último dibujo (borrador)
 
     # Comentarios finales persistentes
-    if "comentarios_finales" not in st.session_state:
-        st.session_state.comentarios_finales = ""
+    if "final_comments" not in st.session_state:
+        st.session_state.final_comments = ""
 
     # Persistencia de vista y buscador (solo se cambia con buscador, no con pan/zoom)
     if "map_center" not in st.session_state:
@@ -35,8 +35,8 @@ def init_session_state():
         st.session_state.search_results = None
 
     # Guardar resultado de exposición para que persista en reruns (y se imprima)
-    if "resultado_exposicion" not in st.session_state:
-        st.session_state.resultado_exposicion = None  # dict con dominante, capa, etc.
+    if "expo_result" not in st.session_state:
+        st.session_state.expo_result = None  # dict con dominante, capa, etc.
 
     # Guardar la figura del buffer en reruns.
     if "polygon_buffer_geojson" not in st.session_state:

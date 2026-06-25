@@ -2,9 +2,22 @@
   padding-top: 3.5rem;
   padding-bottom: 1.2rem; 
 }
-h2 { margin-top: 0.6rem; margin-bottom: 0.35rem; }
-h3 { margin-top: 0.6rem; margin-bottom: 0.35rem; }
-.stAlert { margin-top: 0.35rem; margin-bottom: 0.35rem; }
+
+h2 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+h3 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.stAlert {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
 .badge {
   display: inline-block;
   padding: 0.35rem 0.65rem;
@@ -14,6 +27,7 @@ h3 { margin-top: 0.6rem; margin-bottom: 0.35rem; }
   line-height: 1.2;
   color: white;
 }
+
 .bajo    { background: #2E7D32; }
 .medio   { background: #F9A825; }
 .alto    { background: #Ef6C00; }
