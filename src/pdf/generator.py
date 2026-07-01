@@ -88,6 +88,17 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         alignment=1
     )
 
+    comment_text_style = ParagraphStyle(
+        name="TextoComentarios",
+        fontName="Helvetica",
+        fontSize=10,
+        textColor=colors.HexColor("#0A0A0A"),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=14,
+    )
+
     # -- Estilos de texto de la leyenda del mapa -------------------------
     legend_title_style = ParagraphStyle(
         name="TituloLeyenda",
@@ -259,8 +270,9 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(Spacer(1, 0.1 * cm))
 
     # -- Dirección proyecto ----------------------------------
+    addr_poly_text = addr_poly.strip() if addr_poly and addr_poly.strip() else "Dirección no especificada"
     story.append(Paragraph(
-        addr_poly,
+        addr_poly_text,
         addr_title_style
     ))
     story.append(Spacer(1, 0.1 * cm))
@@ -386,6 +398,60 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(Spacer(1, 0.7 * cm))
 
     # ==========================================================
+    # Interpretación del nivel de exposición
+    # ==========================================================
+
+    INTERPRETACIONES = {
+        "Bajo": (
+            "El nivel <b>Bajo</b> de exposición significa que el área presenta condiciones mínimas "
+            "de riesgo ante incendios forestales... "
+        ),
+        "Medio": (
+            "El nivel <b>Medio</b> de exposición significa que el área presenta una exposición moderada... "
+        ),
+        "Alto": (
+            "El nivel <b>Alto</b> de exposición significa que el área presenta una exposición significativa "
+            "a incendios forestales... "
+        ),
+        "Muy Alto": (
+            "El nivel <b>Muy Alto</b> de exposición significa que el área presenta la máxima exposición "
+            "a incendios forestales... "
+        ),
+        "Sin Dato": (
+            "El nivel <b>Sin Dato</b> significa que no se cuenta con información suficiente para clasificar "
+            "la exposición del área. Esto puede deberse a que..."
+        )
+    }
+
+    # -- Título interpretación ------------------------------------
+    story.append(Paragraph(
+        "Interpretación nivel de exposición",
+        sub_title_style
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # Obtener la interpretación según el nivel de exposición resultante
+    nivel_exposicion = expo_result["dominante"]
+    interpretacion_text = INTERPRETACIONES.get(nivel_exposicion, "Información no disponible.")
+    
+    interpretation_data = [[Paragraph(interpretacion_text, comment_text_style)]]
+    table_interpretation = Table(interpretation_data, colWidths=[usable_w], cornerRadii=[6, 6, 6, 6])
+
+    # -- Aplicar diseño a la tabla de interpretación ----------------
+    table_interpretation.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),       
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.black),        
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),             
+        ('VALIGN', (0, 0), (0, 0), 'TOP'),     
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica'),   
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),           
+        ('GRID', (0, 0), (0, 0), 1, colors.HexColor('#C7D8E6')),     
+    ]))
+
+    story.append(table_interpretation)
+    story.append(Spacer(1, 0.7 * cm))
+
+    # ==========================================================
     # Añadir comentarios finales
     # ==========================================================
 
@@ -396,11 +462,13 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     ))
     story.append(Spacer(1, 0.2 * cm))
 
-    comments_pdf = final_comments.replace("\n", "<br/>")
-    comments_data = [[Paragraph(comments_pdf)]]
-    table_comments = Table(comments_data, colWidths=[usable_w], rowHeights=[150], cornerRadii=[6, 6, 6, 6])
+    # Si no hay comentario guardado o está vacío → mostrar texto por defecto
+    comments_text = final_comments.strip() if final_comments and final_comments.strip() else "Sin comentarios"
+    comments_pdf = comments_text.replace("\n", "<br/>")
+    comments_data = [[Paragraph(comments_pdf, comment_text_style)]]
+    table_comments = Table(comments_data, colWidths=[usable_w], cornerRadii=[6, 6, 6, 6])
 
-    # -- Aplicar diseño a la tabla de exposición a incendios --------
+    # -- Aplicar diseño a la tabla de comentarios finales --------
     table_comments.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),       
         ('TEXTCOLOR', (0, 0), (0, 0), colors.black),        

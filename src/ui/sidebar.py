@@ -131,7 +131,7 @@ def render_sidebar() -> tuple:
                 options=["OpenStreetMap", "Esri Satélite"],
                 index=1,
                 key="base_layer_radio",
-                help="Esta selección define la capa base que se usará en el PDF generado.",
+                help="Esta selección define la capa base que se usará en el mapa del PDF generado.",
                 label_visibility="visible",
             )
 
@@ -159,7 +159,7 @@ def render_sidebar() -> tuple:
                         pdf_bytes, pdf_name = generate_pdf(map_img,
                                                            st.session_state.addr_poly_pdf,
                                                            st.session_state.expo_result,
-                                                           st.session_state.final_comments)
+                                                           st.session_state.final_comments_saved)
 
                         st.download_button(
                             label="⬇️ Descargar PDF",

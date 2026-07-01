@@ -89,15 +89,19 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
         st.markdown('<div class="muted">Dibuja/edita en el mapa. OK fija el polígono.</div>', unsafe_allow_html=True)
 
     if clear_clicked:
-        st.session_state.polygon_ok             = False
-        st.session_state.polygon_geojson        = None
-        st.session_state.polygon_draft          = None
+        st.session_state.polygon_ok = False
+        st.session_state.polygon_geojson = None
+        st.session_state.polygon_draft = None
         st.session_state.polygon_buffer_geojson = None
-        st.session_state.expo_result   = None
+        st.session_state.expo_result = None
+        st.session_state.final_comments = ""  
+        st.session_state.final_comments_saved = None  
         st.rerun()
 
     if ok_clicked:
         st.session_state.expo_result = None
+        st.session_state.final_comments = ""  
+        st.session_state.final_comments_saved = None  
         prev = st.session_state.get("mapa_directo", {})
         if isinstance(prev, dict):
             c = prev.get("center")
@@ -170,6 +174,7 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
                     }
 
                     st.success("✅ Exposición calculada y guardada.")
+                    st.rerun()
 
                 except Exception as e:
                     st.error("Ocurrió un error al calcular la exposición.")
@@ -205,7 +210,16 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
                     )
                 )
 
-                st.caption("✅ Este resultado y comentarios quedan guardados y se incluyen en el print (Ctrl+P / Guardar como PDF).")
+                # Botón para confirmar y guardar el comentario
+                if st.button("💾 Guardar comentario", use_container_width=False):
+                    st.session_state.final_comments_saved = st.session_state.final_comments
+
+                # Mostrar estado del comentario guardado
+                if st.session_state.final_comments_saved is not None:
+                    if st.session_state.final_comments_saved.strip():
+                        st.success("✅ Comentario guardado correctamente.")
+                    else:
+                        st.info("ℹ️ Comentario guardado vacío, el PDF mostrará 'Sin comentarios'.")
 
             else:
-                st.info("Aún no has calculado la exposición. Presiona “Calcular exposición”.")
+                st.info("ℹ️ Aún no has calculado la exposición. Presiona “Calcular exposición”.")

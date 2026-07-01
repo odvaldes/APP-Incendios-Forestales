@@ -18,6 +18,9 @@ def init_session_state():
     # Comentarios finales persistentes
     if "final_comments" not in st.session_state:
         st.session_state.final_comments = ""
+    # Comentario confirmado con el botón "Guardar comentario" (el que va al PDF)
+    if "final_comments_saved" not in st.session_state:
+        st.session_state.final_comments_saved = None
 
     # Persistencia de vista y buscador (solo se cambia con buscador, no con pan/zoom)
     if "map_center" not in st.session_state:
