@@ -1,0 +1,122 @@
+.block-container { 
+  padding-top: 3.5rem;
+  padding-bottom: 1.2rem; 
+}
+
+h2 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+h3 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.stAlert {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  color: white;
+}
+
+.bajo    { background: #2E7D32; }
+.medio   { background: #F9A825; }
+.alto    { background: #Ef6C00; }
+.muyalto { background: #F00E02; }
+.sindato { background: #9CA3AF; }
+.muted   { color: #6b7280; font-size: 0.9rem; }
+.tight   { margin-top: 0.2rem; }
+
+/* ── Tooltip sobre badges de exposición ───────────────────── */
+
+.badge-tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.badge-tooltip .tooltip-content {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+
+  position: absolute;
+  bottom: calc(100% + 10px);
+
+  width: 280px;
+  background-color: #1F2937;
+  color: #F9FAFB;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.55;
+  text-align: left;
+  padding: 10px 13px;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  z-index: 99999;
+
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+/* Negrita dentro del tooltip */
+.badge-tooltip .tooltip-content b {
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.badge-tooltip:hover .tooltip-content {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* ── Flecha genérica (apunta hacia abajo al badge) ─────────── */
+.badge-tooltip .tooltip-content::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  border-width: 6px;
+  border-style: solid;
+  border-color: #1F2937 transparent transparent transparent;
+}
+
+/* ── Posición: izquierda (para badges al inicio de la fila) ── */
+.badge-tooltip .tooltip-content.tip-left {
+  left: 0;
+  transform: none;
+}
+
+.badge-tooltip .tooltip-content.tip-left::after {
+  left: 20px;
+}
+
+/* ── Posición: centro (para badges en el medio de la fila) ─── */
+.badge-tooltip .tooltip-content.tip-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.badge-tooltip .tooltip-content.tip-center::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* ── Posición: derecha (para badges al final de la fila) ───── */
+.badge-tooltip .tooltip-content.tip-right {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.badge-tooltip .tooltip-content.tip-right::after {
+  right: 20px;
+  left: auto;
+}
