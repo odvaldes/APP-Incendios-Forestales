@@ -132,12 +132,54 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
     st.markdown(
         """
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <span class="badge bajo">Bajo</span>
-          <span class="badge medio">Medio</span>
-          <span class="badge alto">Alto</span>
-          <span class="badge muyalto">Muy Alto</span>
-          <span class="badge sindato">Sin Dato</span>
+
+          <span class="badge-tooltip">
+            <span class="badge bajo">Bajo</span>
+            <div class="tooltip-content tip-left">
+              El nivel <b>Bajo</b> de exposición significa que el área presenta
+              condiciones mínimas de riesgo ante incendios forestales...
+            </div>
+          </span>
+
+          <span class="badge-tooltip">
+            <span class="badge medio">Medio</span>
+            <div class="tooltip-content tip-center">
+              El nivel <b>Medio</b> de exposición significa que el área presenta una
+              exposición moderada...
+            </div>
+          </span>
+
+          <span class="badge-tooltip">
+            <span class="badge alto">Alto</span>
+            <div class="tooltip-content tip-center">
+              El nivel <b>Alto</b> de exposición significa que el área presenta una
+              exposición significativa a incendios forestales...
+            </div>
+          </span>
+
+          <span class="badge-tooltip">
+            <span class="badge muyalto">Muy Alto</span>
+            <div class="tooltip-content tip-center">
+              El nivel <b>Muy Alto</b> de exposición significa que el área presenta la
+              máxima exposición a incendios forestales...
+            </div>
+          </span>
+
+          <span class="badge-tooltip">
+            <span class="badge sindato">Sin Dato</span>
+            <div class="tooltip-content tip-right">
+              El nivel <b>Sin Dato</b> significa que no se cuenta con información
+              suficiente para clasificar la exposición del área. Esto puede deberse a que...
+            </div>
+          </span>
+
         </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
         <div class="muted" style="margin-top:0.35rem;">
           <b>Nota:</b> La exposición se determina por el nivel de exposición de mayor riesgo encontrado 
           dentro del área de análisis (polígono original + buffer de 100m).
