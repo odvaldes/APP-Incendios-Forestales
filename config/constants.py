@@ -51,5 +51,43 @@ ANCHORS_RGB = {
     4: np.array([220,  50,  50], dtype=np.float32),  # Muy alto
 }
 
-# Niveles de exposición (índice = prioridad)
+# ===================================================
+# Niveles de exposición: indice = prioridad
+# ===================================================
 EXPOSURE_LEVELS = ["Sin Dato", "Bajo", "Medio", "Alto", "Muy Alto"]
+
+# ===================================================
+# Texto interpretativo de cada nivel de exposición
+# ===================================================
+INTERPRETATIONS = {
+    "Bajo": {
+        "text": (
+            "El nivel <b>Bajo</b> de exposición significa que el área presenta "
+            "condiciones mínimas de riesgo ante incendios forestales..."
+        )
+    },
+    "Medio": {
+        "text": (
+            "El nivel <b>Medio</b> de exposición significa que el área presenta "
+            "una exposición moderada a incendios forestales..."
+        )
+    },
+    "Alto": {
+        "text": (
+            "El nivel <b>Alto</b> de exposición significa que el área presenta "
+            "una exposición significativa a incendios forestales..."
+        )
+    },
+    "Muy Alto": {
+        "text": (
+            "El nivel <b>Muy Alto</b> de exposición significa que el área presenta "
+            "la máxima exposición a incendios forestales..."
+        )
+    },
+    "Sin Dato": {
+        "text": (
+            "El nivel <b>Sin Dato</b> significa que no se cuenta con información "
+            "suficiente para clasificar la exposición del área. Esto se debe a..."
+        )
+    },
+}

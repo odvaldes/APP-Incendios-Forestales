@@ -10,8 +10,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, PageBreak, Spacer, 
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-from config.constants import LOGO_PATH
-import streamlit as st
+from config.constants import LOGO_PATH, INTERPRETATIONS
 
 
 def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, final_comments: str):
@@ -197,30 +196,8 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     # ==========================================================
 
     interpre_expo = [
-        (
-            "Bajo",
-            "El nivel <b>Bajo</b> de exposición significa que el área presenta condiciones mínimas "
-            "de riesgo ante incendios forestales..."
-        ),
-        (
-            "Medio",
-            "El nivel <b>Medio</b> de exposición significa que el área presenta una exposición moderada... "
-        ),
-        (
-            "Alto",
-            "El nivel <b>Alto</b> de exposición significa que el área presenta una exposición significativa "
-            "a incendios forestales..."
-        ),
-        (
-            "Muy Alto",
-            "El nivel <b>Muy Alto</b> de exposición significa que el área presenta la máxima exposición "
-            "a incendios forestales..."
-        ),
-        (
-            "Sin Dato",
-            "El nivel <b>Sin Dato</b> significa que no se cuenta con información suficiente para clasificar "
-            "la exposición del área. Esto puede deberse a que..."
-        ),
+        (nivel, INTERPRETATIONS[nivel]["text"])
+        for nivel in ["Bajo", "Medio", "Alto", "Muy Alto", "Sin Dato"]
     ]
 
     # ==========================================================
