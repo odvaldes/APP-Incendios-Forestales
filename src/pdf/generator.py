@@ -13,17 +13,42 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from config.constants import LOGO_PATH
 import streamlit as st
 
-# =========================
-# GENERACIÓN DEL PDF CON REPORTLAB
-# =========================
 
 def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, final_comments: str):
 
     # ==========================================================
-    # Estilos para el PDF
+    # Dimensiones del documento
     # ==========================================================
 
-    # -- Estilos de texto --------------------------------------
+    buffer = BytesIO()
+    today  = datetime.now(ZoneInfo("America/Santiago"))
+
+    page_w, page_h = letter     # ancho y altura total del documento
+    side_margin    = 2.5 * cm   # margen de los lados
+    header_h       = 2 * cm     # altura total de la zona del header
+    footer_h       = 2 * cm     # altura total de la zona del footer
+    header_gap     = 0.4 * cm   # separación visual entre header y contenido
+    footer_gap     = 0.3 * cm   # separación visual entre contenido y footer
+
+    # -- Margen del contenedor del contenido ------------------------
+    top_margin    = header_h + header_gap
+    bottom_margin = footer_h + footer_gap
+    usable_w      = page_w - 2 * side_margin
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=side_margin,
+        rightMargin=side_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+    )
+
+    # ==========================================================
+    # Estilos de texto
+    # ==========================================================
+
+    # -- Títulos -----------------------------------------------
     title_style = ParagraphStyle(
         name="TituloPrincipal",
         fontName="Helvetica-Bold",
@@ -79,13 +104,13 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         leading=12,
     )
 
-    # -- Estilo badge exposición ----------------------------------------
+    # -- Contenido ---------------------------------------------
     badge_text_style = ParagraphStyle(
         name='TextoBadge',
         fontName='Helvetica-Bold',
         fontSize=10,
         textColor=colors.white,
-        alignment=1
+        alignment=1,
     )
 
     comment_text_style = ParagraphStyle(
@@ -99,7 +124,7 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         leading=14,
     )
 
-    # -- Estilos de texto de la leyenda del mapa -------------------------
+    # -- Leyenda del mapa --------------------------------------
     legend_title_style = ParagraphStyle(
         name="TituloLeyenda",
         fontName="Helvetica-Bold",
@@ -122,36 +147,20 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         leading=14,
     )
 
-    # ==========================================================
-    # Dimensiones del documento
-    # ==========================================================
-
-    buffer = BytesIO()
-    today = datetime.now(ZoneInfo("America/Santiago"))
-
-    page_w, page_h = letter     # ancho y altura total del documento
-    side_margin = 2.5 * cm      # margen de los lados
-    header_h    = 2 * cm        # altura total de la zona del header
-    footer_h    = 2 * cm        # altura total de la zona del footer
-    header_gap  = 0.4 * cm      # separación visual entre header y contenido
-    footer_gap  = 0.3 * cm      # separación visual entre contenido y footer
-
-    # -- Margen del contenedor del contenido ------------------------ 
-    top_margin    = header_h + header_gap
-    bottom_margin = footer_h + footer_gap
-    usable_w      = page_w - 2 * side_margin
-
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        leftMargin=side_margin,
-        rightMargin=side_margin,
-        topMargin=top_margin,
-        bottomMargin=bottom_margin,
+    # -- Anexo -------------------------------------------------
+    annex_text_style = ParagraphStyle(
+        name="TextoAnexo",
+        fontName="Helvetica",
+        fontSize=9,
+        textColor=colors.HexColor('#1A1A1A'),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=12,
     )
 
     # ==========================================================
-    # Colores y función badge (reutilizada en página 1 y anexo)
+    # Colores y función badge
     # ==========================================================
 
     colors_badge = {
@@ -173,20 +182,18 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         # -- Aplicar diseño --------------------------------------
         badge_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), color_background),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
         ]))
 
         return badge_table
-    
+
     # ==========================================================
     # Datos de niveles de exposición: nivel + interpretación
-    # Fuente única usada en página 1 (interpretación del resultado)
-    # y en página 3 (tabla del anexo)
     # ==========================================================
 
     interpre_expo = [
@@ -216,30 +223,27 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         ),
     ]
 
-    # -- Story para construcción del documento -----------------------
-    story = []
-
     # ==========================================================
     # Header y Footer
     # ==========================================================
 
-    # -- Header -------------------------------------------
+    # -- Header ------------------------------------------------
     def draw_header(canvas_obj, doc_obj):
         canvas_obj.saveState()
 
-        header_top    = page_h                           # borde superior del header
-        header_bottom = page_h - header_h                # borde inferior del header
-        header_mid_y  = (header_top + header_bottom) / 2 # centro vertical del header
+        header_top    = page_h                            # borde superior del header
+        header_bottom = page_h - header_h                 # borde inferior del header
+        header_mid_y  = (header_top + header_bottom) / 2  # centro vertical del header
 
         # -- Logo izquierda -------------------------------------
-        logo_h = 1.6 * cm
-        pil_logo = Image.open(LOGO_PATH)
+        logo_h      = 1.6 * cm
+        pil_logo    = Image.open(LOGO_PATH)
         logo_orig_w, logo_orig_h = pil_logo.size
         logo_aspect = logo_orig_w / logo_orig_h
 
-        logo_w = logo_h * logo_aspect            # ancho proporcional
-        logo_x = side_margin                     # alineado al margen izquierdo
-        logo_y = header_mid_y - logo_h / 2       # centrado verticalmente en el header
+        logo_w = logo_h * logo_aspect        # ancho proporcional
+        logo_x = side_margin                 # alineado al margen izquierdo
+        logo_y = header_mid_y - logo_h / 2  # centrado verticalmente en el header
 
         try:
             canvas_obj.drawImage(
@@ -249,83 +253,64 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
                 width=logo_w,
                 height=logo_h,
                 preserveAspectRatio=True,
-                mask="auto",                # respeta canal alpha del PNG
+                mask="auto",            # respeta canal alpha del PNG
             )
         except Exception:
-            pass                            # si el logo no existe, omitir
+            pass                        # si el logo no existe, omitir
 
         # -- Texto derecha --------------------------------------
-        line1 = "División de Evaluación Social de Inversiones — SNI"
-        line2 = "Ministerio de Desarrollo Social y Familia"
-        text_x = page_w - side_margin     # alineado al margen derecho
+        line1  = "División de Evaluación Social de Inversiones — SNI"
+        line2  = "Ministerio de Desarrollo Social y Familia"
+        text_x = page_w - side_margin  # alineado al margen derecho
 
         # Texto línea 1
         canvas_obj.setFont("Helvetica-Bold", 7.5)
         canvas_obj.setFillColor(colors.HexColor('#1A3C6E'))
-        canvas_obj.drawRightString(
-            text_x,
-            header_mid_y + 0.10 * cm,
-            line1,
-        )
+        canvas_obj.drawRightString(text_x, header_mid_y + 0.10 * cm, line1)
 
         # Texto línea 2
         canvas_obj.setFont("Helvetica", 7.5)
         canvas_obj.setFillColor(colors.HexColor('#555555'))
-        canvas_obj.drawRightString(
-            text_x,
-            header_mid_y - 0.25 * cm,
-            line2,
-        )
+        canvas_obj.drawRightString(text_x, header_mid_y - 0.25 * cm, line2)
 
-        # -- Línea separadora  -----------------------------------
+        # -- Línea separadora -----------------------------------
         line_y = header_bottom - 0.10 * cm
         canvas_obj.setStrokeColor(colors.HexColor('#D1D5DB'))
         canvas_obj.setLineWidth(0.5)
-        canvas_obj.line(
-            side_margin,
-            line_y,
-            page_w - side_margin,
-            line_y
-        )
+        canvas_obj.line(side_margin, line_y, page_w - side_margin, line_y)
 
         canvas_obj.restoreState()
 
-    # -- Footer -------------------------------------------
+    # -- Footer ------------------------------------------------
     def draw_footer(canvas_obj, doc_obj):
         canvas_obj.saveState()
 
-        footer_top    = footer_h           # borde superior del footer
-        footer_y_text = footer_h / 2       # posición Y del texto de página
+        footer_top    = footer_h       # borde superior del footer
+        footer_y_text = footer_h / 2  # posición Y del texto de página
 
-        # -- Línea separadora ------------------------------
+        # -- Línea separadora -----------------------------------
         canvas_obj.setStrokeColor(colors.HexColor('#D1D5DB'))
         canvas_obj.setLineWidth(0.5)
-        canvas_obj.line(
-            side_margin,
-            footer_top,
-            page_w - side_margin,
-            footer_top,
-        )
+        canvas_obj.line(side_margin, footer_top, page_w - side_margin, footer_top)
 
         # -- Número de página -----------------------------------
         page_num = canvas_obj.getPageNumber()
         canvas_obj.setFont("Helvetica", 10)
         canvas_obj.setFillColor(colors.HexColor('#6B7280'))
-        canvas_obj.drawRightString(
-            page_w - side_margin,
-            footer_y_text,
-            f"Página {page_num}",
-        )
+        canvas_obj.drawRightString(page_w - side_margin, footer_y_text, f"Página {page_num}")
 
         canvas_obj.restoreState()
 
-    # -- Header y Footer juntos ------------------------------------
+    # -- Header y Footer juntos --------------------------------
     def draw_header_footer(canvas_obj, doc_obj):
         draw_header(canvas_obj, doc_obj)
         draw_footer(canvas_obj, doc_obj)
 
+    # -- Story para construcción del documento -----------------------
+    story = []
+
     # ==========================================================
-    # Añadir Títulos
+    # PÁGINA 1 — Resultados del análisis
     # ==========================================================
 
     # -- Título principal ------------------------------------
@@ -336,122 +321,99 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(Spacer(1, 0.1 * cm))
 
     # -- Dirección proyecto ----------------------------------
-    story.append(Paragraph(
-        addr_poly,
-        addr_title_style
-    ))
+    story.append(Paragraph(addr_poly, addr_title_style))
     story.append(Spacer(1, 0.1 * cm))
 
-    # -- Fecha reporte ------------------------------------
+    # -- Fecha reporte ---------------------------------------
     story.append(Paragraph(
         today.strftime("<b>Fecha de generación del reporte:</b> %d/%m/%Y"),
         date_title_style
     ))
     story.append(Spacer(1, 0.6 * cm))
 
-    # ==========================================================
-    # Resultado exposición
-    # ==========================================================
-
-    # -- Título ------------------------------------------------
-    story.append(Paragraph(
-        "Nivel de exposición emplazamiento",
-        sub_title_style
-    ))
+    # -- Resultado exposición --------------------------------
+    story.append(Paragraph("Nivel de exposición emplazamiento", sub_title_style))
     story.append(Spacer(1, 0.3 * cm))
 
     # -- Crear la tabla para mostrar la exposición a incendios -----
     layers_analyzed = Paragraph("<br/>".join(expo_result["layer"]))
-    celda_badge = create_badge(expo_result["dominante"])
+    celda_badge     = create_badge(expo_result["dominante"])
 
-    expo_data = [["Región analizada", "Nivel de exposición"],
-                [layers_analyzed, celda_badge]]
-
+    expo_data  = [
+        ["Región analizada", "Nivel de exposición"],
+        [layers_analyzed,    celda_badge],
+    ]
     col_expo_w = usable_w / 2 - side_margin
     table_expo = Table(expo_data, colWidths=[col_expo_w, col_expo_w])
 
     # -- Aplicar diseño a la tabla de exposición a incendios --------
     table_expo.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#1A5276')),       
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke), # Texto blanco para la primera fila
+        ('BACKGROUND', (0, 0), (1, 0),  colors.HexColor('#1A5276')),
+        ('TEXTCOLOR',  (0, 0), (-1, 0), colors.whitesmoke),  # Texto blanco para la primera fila
         # Todo el texto de la primera fila a la izquierda
-        ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
-        # Contenido de la celda (2, 1) a la izquierda y arriba           
-        ('ALIGN', (0, 1), (0, 1), 'LEFT'),             
-        ('VALIGN', (0, 1), (0, 1), 'TOP'),     
-        # Contenido de la celda (2, 2) en el centro       
-        ('ALIGN', (1, 1), (1, 1), 'CENTER'),
-        ('VALIGN', (1, 1), (1, 1), 'MIDDLE'),
-        ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),   
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),          
-        ('BACKGROUND', (0, 1), (-1, -1), colors.white),   
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC')),     
+        ('ALIGN',      (0, 0), (-1, 0), 'LEFT'),
+        # Contenido de la celda (2, 1) a la izquierda y arriba
+        ('ALIGN',      (0, 1), (0, 1),  'LEFT'),
+        ('VALIGN',     (0, 1), (0, 1),  'TOP'),
+        # Contenido de la celda (2, 2) en el centro
+        ('ALIGN',      (1, 1), (1, 1),  'CENTER'),
+        ('VALIGN',     (1, 1), (1, 1),  'MIDDLE'),
+        ('FONTNAME',      (0, 0), (1, 0),  'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND',    (0, 1), (-1, -1), colors.white),
+        ('GRID',          (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC')),
     ]))
 
     story.append(table_expo)
     story.append(Spacer(1, 0.7 * cm))
 
-    # ==========================================================
-    # Interpretación del nivel de exposición
-    # ==========================================================
-
-    # -- Título interpretación ------------------------------------
-    story.append(Paragraph(
-        "Interpretación nivel de exposición",
-        sub_title_style
-    ))
+    # -- Interpretación del nivel de exposición --------------
+    story.append(Paragraph("Interpretación nivel de exposición", sub_title_style))
     story.append(Spacer(1, 0.2 * cm))
 
     # Obtener la interpretación según el nivel de exposición resultante
-    nivel_exposicion = expo_result["dominante"]
+    nivel_exposicion   = expo_result["dominante"]
     interpretacion_text = next(
         (texto for nivel, texto in interpre_expo if nivel == nivel_exposicion),
         "Información no disponible."
     )
-    
-    interpretation_data = [[Paragraph(interpretacion_text, comment_text_style)]]
+
+    interpretation_data  = [[Paragraph(interpretacion_text, comment_text_style)]]
     table_interpretation = Table(interpretation_data, colWidths=[usable_w], cornerRadii=[6, 6, 6, 6])
 
     # -- Aplicar diseño a la tabla de interpretación ----------------
     table_interpretation.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),       
-        ('TEXTCOLOR', (0, 0), (0, 0), colors.black),        
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),             
-        ('VALIGN', (0, 0), (0, 0), 'TOP'),     
-        ('FONTNAME', (0, 0), (0, 0), 'Helvetica'),   
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),           
-        ('GRID', (0, 0), (0, 0), 1, colors.HexColor('#C7D8E6')),     
+        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),
+        ('TEXTCOLOR',  (0, 0), (0, 0), colors.black),
+        ('ALIGN',      (0, 0), (0, 0), 'LEFT'),
+        ('VALIGN',     (0, 0), (0, 0), 'TOP'),
+        ('FONTNAME',      (0, 0), (0, 0), 'Helvetica'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('GRID',          (0, 0), (0, 0),   1, colors.HexColor('#C7D8E6')),
     ]))
 
     story.append(table_interpretation)
     story.append(Spacer(1, 0.7 * cm))
 
-    # ==========================================================
-    # Añadir comentarios finales
-    # ==========================================================
-
-    # -- Título comentarios ------------------------------------
-    story.append(Paragraph(
-        "Comentarios finales del análisis",
-        sub_title_style
-    ))
+    # -- Comentarios finales del análisis --------------------
+    story.append(Paragraph("Comentarios finales del análisis", sub_title_style))
     story.append(Spacer(1, 0.2 * cm))
 
     # Si no hay comentario guardado o está vacío → mostrar texto por defecto
     comments_text = final_comments.strip() if final_comments and final_comments.strip() else "Sin comentarios"
-    comments_pdf = comments_text.replace("\n", "<br/>")
+    comments_pdf  = comments_text.replace("\n", "<br/>")
     comments_data = [[Paragraph(comments_pdf, comment_text_style)]]
     table_comments = Table(comments_data, colWidths=[usable_w], cornerRadii=[6, 6, 6, 6])
 
     # -- Aplicar diseño a la tabla de comentarios finales --------
     table_comments.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),       
-        ('TEXTCOLOR', (0, 0), (0, 0), colors.black),        
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),             
-        ('VALIGN', (0, 0), (0, 0), 'TOP'),     
-        ('FONTNAME', (0, 0), (0, 0), 'Helvetica'),   
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),           
-        ('GRID', (0, 0), (0, 0), 1, colors.HexColor('#C7D8E6')),     
+        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#F7FBFF')),
+        ('TEXTCOLOR',  (0, 0), (0, 0), colors.black),
+        ('ALIGN',      (0, 0), (0, 0), 'LEFT'),
+        ('VALIGN',     (0, 0), (0, 0), 'TOP'),
+        ('FONTNAME',      (0, 0), (0, 0), 'Helvetica'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('GRID',          (0, 0), (0, 0),   1, colors.HexColor('#C7D8E6')),
     ]))
 
     story.append(table_comments)
@@ -460,14 +422,11 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(PageBreak())
 
     # ==========================================================
-    # Añadir imagen del mapa
+    # PÁGINA 2 — Mapa de exposición
     # ==========================================================
 
     # -- Título para el mapa -----------------------------------
-    story.append(Paragraph(
-        "Mapa exposición a incendios del proyecto",
-        sub_title_style
-    ))
+    story.append(Paragraph("Mapa exposición a incendios del proyecto", sub_title_style))
     story.append(Spacer(1, 0.3 * cm))
 
     # -- Dimensiones de la imagen --------------------------------
@@ -487,24 +446,22 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     img_buf.seek(0)
 
     # -- Crear contorno alrededor de la imagen ------------------
-    rl_img = RLImage(img_buf, width=map_box_size, height=map_box_size)
+    rl_img           = RLImage(img_buf, width=map_box_size, height=map_box_size)
     rl_img_container = [[rl_img]]
-    rl_img_table = Table(rl_img_container)
+    rl_img_table     = Table(rl_img_container)
+
     rl_img_table.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#000000")),
+        ('BOX',           (0, 0), (-1, -1), 1, colors.HexColor("#000000")),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
     ]))
 
     story.append(rl_img_table)
     story.append(Spacer(1, 0.3 * cm))
 
-    # ==========================================================
-    # Añadir leyenda exposición de incendios
-    # ==========================================================
-
+    # -- Leyenda de exposición ----------------------------------
     legend_items_data = [
         ("Bajo",     colors.HexColor('#AACEAC')),
         ("Medio",    colors.HexColor('#F1FB7B')),
@@ -512,7 +469,7 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         ("Muy Alto", colors.HexColor('#F0261C')),
     ]
 
-    # -- Dimensiones leyenda ---------------------------------
+    # -- Dimensiones leyenda ------------------------------------
     color_box_size = 0.55 * cm          # lado del cuadrado de color
     col_gap        = 0.22 * cm          # espacio entre cuadrado y etiqueta
     row0_h         = 0.55 * cm          # alto de la fila del título
@@ -525,11 +482,11 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     def make_item_cell(label: str, box_color) -> Table:
         # -- Crear micro tabla 1×2: [ cuadrado de color ] [ etiqueta de texto ] ----
 
-        color_cell = ""                                        # El color del cuadrado se verá con TableStyle
-        text_cell  = Paragraph(label, legend_label_style)     # Etiqueta de texto
+        color_cell = ""                                         # El color del cuadrado se verá con TableStyle
+        text_cell  = Paragraph(label, legend_label_style)      # Etiqueta de texto
 
-        box_col_w  = color_box_size                            # Ancho disponible para el cuadrado de color
-        text_col_w = item_col_w - color_box_size - col_gap     # Ancho disponible para el texto
+        box_col_w  = color_box_size                             # Ancho disponible para el cuadrado de color
+        text_col_w = item_col_w - color_box_size - col_gap      # Ancho disponible para el texto
 
         inner = Table(
             [[color_cell, text_cell]],
@@ -586,31 +543,16 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(PageBreak())
 
     # ==========================================================
-    # Anexo: Simbología y definición de niveles de exposición
+    # PÁGINA 3 — Anexo: Simbología y niveles de exposición
     # ==========================================================
 
-    # -- Estilo para texto de interpretación en el anexo --------
-    annex_text_style = ParagraphStyle(
-        name="TextoAnexo",
-        fontName="Helvetica",
-        fontSize=9,
-        textColor=colors.HexColor('#1A1A1A'),
-        alignment=TA_LEFT,
-        spaceAfter=0,
-        spaceBefore=0,
-        leading=12,
-    )
-
     # -- Título del anexo ---------------------------------------
-    story.append(Paragraph(
-        "Anexo: Simbología y niveles de exposición",
-        sub_title_style
-    ))
+    story.append(Paragraph("Anexo: Simbología y niveles de exposición", sub_title_style))
     story.append(Spacer(1, 0.2 * cm))
 
     # -- Anchos de columnas de la tabla del anexo ---------------
-    col_badge_w          = 3.8 * cm     # columna del badge
-    col_interpretation_w = usable_w - col_badge_w  # columna de interpretación
+    col_badge_w          = 3.8 * cm                    # columna del badge
+    col_interpretation_w = usable_w - col_badge_w      # columna de interpretación
 
     # -- Construir filas de la tabla ----------------------------
     annex_data = [["Nivel de exposición", "Interpretación"]]
