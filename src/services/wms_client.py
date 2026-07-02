@@ -25,7 +25,7 @@ def format_layer_title(name: str) -> str:
 @st.cache_data(show_spinner=False, ttl=1800)
 def fetch_capabilities(url: str, timeout_s: int) -> str:
     cap_url = f"{url}?SERVICE=WMS&REQUEST=GetCapabilities"
-    r = requests.get(cap_url, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"}, verify=False)
+    r = requests.get(cap_url, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"})
     r.raise_for_status()
     return r.text
 
@@ -80,7 +80,7 @@ def wms_getmap_png(wms_url: str, layer_names: list, bbox: tuple, size_px: int, t
             "FORMAT": "image/png",
             "TRANSPARENT": "TRUE",
         }
-        r = requests.get(wms_url, params=params, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"}, verify=False)
+        r = requests.get(wms_url, params=params, timeout=timeout_s, headers={"User-Agent": "streamlit-wms-viewer"})
         r.raise_for_status()
         img.append(Image.open(BytesIO(r.content)).convert("RGBA"))
 
