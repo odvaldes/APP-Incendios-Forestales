@@ -150,6 +150,72 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
         bottomMargin=bottom_margin,
     )
 
+    # ==========================================================
+    # Colores y función badge (reutilizada en página 1 y anexo)
+    # ==========================================================
+
+    colors_badge = {
+        "Bajo":     colors.HexColor("#2E7D32"),
+        "Medio":    colors.HexColor("#F9A825"),
+        "Alto":     colors.HexColor("#Ef6C00"),
+        "Muy Alto": colors.HexColor("#F00E02"),
+        "Sin Dato": colors.HexColor("#9CA3AF"),
+    }
+
+    def create_badge(nivel):
+        # -- Definir color de fondo y texto ----------------------
+        color_background = colors_badge.get(nivel)
+        badge_text = Paragraph(nivel, badge_text_style)
+
+        # -- Crear mini tabla 1x1 para el badge ------------------
+        badge_table = Table([[badge_text]], colWidths=[70], cornerRadii=[10, 10, 10, 10])
+
+        # -- Aplicar diseño --------------------------------------
+        badge_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), color_background),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+
+        return badge_table
+    
+    # ==========================================================
+    # Datos de niveles de exposición: nivel + interpretación
+    # Fuente única usada en página 1 (interpretación del resultado)
+    # y en página 3 (tabla del anexo)
+    # ==========================================================
+
+    interpre_expo = [
+        (
+            "Bajo",
+            "El nivel <b>Bajo</b> de exposición significa que el área presenta condiciones mínimas "
+            "de riesgo ante incendios forestales..."
+        ),
+        (
+            "Medio",
+            "El nivel <b>Medio</b> de exposición significa que el área presenta una exposición moderada... "
+        ),
+        (
+            "Alto",
+            "El nivel <b>Alto</b> de exposición significa que el área presenta una exposición significativa "
+            "a incendios forestales..."
+        ),
+        (
+            "Muy Alto",
+            "El nivel <b>Muy Alto</b> de exposición significa que el área presenta la máxima exposición "
+            "a incendios forestales..."
+        ),
+        (
+            "Sin Dato",
+            "El nivel <b>Sin Dato</b> significa que no se cuenta con información suficiente para clasificar "
+            "la exposición del área. Esto puede deberse a que..."
+        ),
+    ]
+
     # -- Story para construcción del documento -----------------------
     story = []
 
@@ -270,9 +336,8 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(Spacer(1, 0.1 * cm))
 
     # -- Dirección proyecto ----------------------------------
-    addr_poly_text = addr_poly.strip() if addr_poly and addr_poly.strip() else "Dirección no especificada"
     story.append(Paragraph(
-        addr_poly_text,
+        addr_poly,
         addr_title_style
     ))
     story.append(Spacer(1, 0.1 * cm))
@@ -281,77 +346,6 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     story.append(Paragraph(
         today.strftime("<b>Fecha de generación del reporte:</b> %d/%m/%Y"),
         date_title_style
-    ))
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ==========================================================
-    # Simbología de niveles de exposición
-    # ==========================================================
-
-    colors_badge = {
-        "Bajo": colors.HexColor("#2E7D32"),
-        "Medio": colors.HexColor("#F9A825"),
-        "Alto": colors.HexColor("#Ef6C00"),
-        "Muy Alto": colors.HexColor("#F00E02"),
-        "Sin Dato": colors.HexColor("#9CA3AF")
-    }
-
-    # -- Función para construir el badge -------------------------
-    def create_badge(nivel):
-        # -- Definir color de fondo y texto ----------------------
-        color_background = colors_badge.get(nivel)
-        badge_text = Paragraph(nivel, badge_text_style)
-        
-        # -- Crear mini tabla 1x1 para el badge ------------------
-        badge_table = Table([[badge_text]], colWidths=[70], cornerRadii=[10, 10, 10, 10])
-        
-        # -- Aplicar diseño --------------------------------------
-        badge_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), color_background),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),   
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),   
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        
-        return badge_table
-
-    # -- Título simbología -------------------------------------------
-    story.append(Paragraph(
-        "Simbología niveles de exposición",
-        sub_title_style
-    ))
-    story.append(Spacer(1, 0.2 * cm))
-
-    # -- Crear mini tabla por cada nivel de exposición ---------------
-    symbol_data = [[create_badge("Bajo"),
-                    create_badge("Medio"),
-                    create_badge("Alto"),
-                    create_badge("Muy Alto"),
-                    create_badge("Sin Dato")]]
-
-    # -- Crear tabla principal para los niveles de exposición -------- 
-    col_symbol_w = usable_w / 5
-    table_symbols = Table(symbol_data, colWidths=[col_symbol_w] * 5)
-
-    # -- Aplicar diseño a la tabla simbolos de niveles --------
-    table_symbols.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (1, 0), colors.white),            
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), 
-        ('GRID', (0, 0), (-1, -1), 1, colors.white),     
-    ]))
-
-    story.append(table_symbols)
-    story.append(Spacer(1, 0.3 * cm))
-
-    # -- Nota sobre nivel de exposición ---------------------
-    story.append(Paragraph(
-        "<b>Nota:</b> La exposición se determina por el nivel de exposición de " \
-        "mayor riesgo encontrado dentro del área de análisis (polígono original + buffer de 100m).",
-        caption_title_style
     ))
     story.append(Spacer(1, 0.6 * cm))
 
@@ -401,28 +395,6 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     # Interpretación del nivel de exposición
     # ==========================================================
 
-    INTERPRETACIONES = {
-        "Bajo": (
-            "El nivel <b>Bajo</b> de exposición significa que el área presenta condiciones mínimas "
-            "de riesgo ante incendios forestales... "
-        ),
-        "Medio": (
-            "El nivel <b>Medio</b> de exposición significa que el área presenta una exposición moderada... "
-        ),
-        "Alto": (
-            "El nivel <b>Alto</b> de exposición significa que el área presenta una exposición significativa "
-            "a incendios forestales... "
-        ),
-        "Muy Alto": (
-            "El nivel <b>Muy Alto</b> de exposición significa que el área presenta la máxima exposición "
-            "a incendios forestales... "
-        ),
-        "Sin Dato": (
-            "El nivel <b>Sin Dato</b> significa que no se cuenta con información suficiente para clasificar "
-            "la exposición del área. Esto puede deberse a que..."
-        )
-    }
-
     # -- Título interpretación ------------------------------------
     story.append(Paragraph(
         "Interpretación nivel de exposición",
@@ -432,7 +404,10 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
 
     # Obtener la interpretación según el nivel de exposición resultante
     nivel_exposicion = expo_result["dominante"]
-    interpretacion_text = INTERPRETACIONES.get(nivel_exposicion, "Información no disponible.")
+    interpretacion_text = next(
+        (texto for nivel, texto in interpre_expo if nivel == nivel_exposicion),
+        "Información no disponible."
+    )
     
     interpretation_data = [[Paragraph(interpretacion_text, comment_text_style)]]
     table_interpretation = Table(interpretation_data, colWidths=[usable_w], cornerRadii=[6, 6, 6, 6])
@@ -606,6 +581,95 @@ def generate_pdf(map_image: Image.Image, addr_poly: str, expo_result: dict, fina
     ]))
 
     story.append(legend_table)
+
+    # -- Salto a la tercera página para el anexo ---------------
+    story.append(PageBreak())
+
+    # ==========================================================
+    # Anexo: Simbología y definición de niveles de exposición
+    # ==========================================================
+
+    # -- Estilo para texto de interpretación en el anexo --------
+    annex_text_style = ParagraphStyle(
+        name="TextoAnexo",
+        fontName="Helvetica",
+        fontSize=9,
+        textColor=colors.HexColor('#1A1A1A'),
+        alignment=TA_LEFT,
+        spaceAfter=0,
+        spaceBefore=0,
+        leading=12,
+    )
+
+    # -- Título del anexo ---------------------------------------
+    story.append(Paragraph(
+        "Anexo: Simbología y niveles de exposición",
+        sub_title_style
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # -- Anchos de columnas de la tabla del anexo ---------------
+    col_badge_w          = 3.8 * cm     # columna del badge
+    col_interpretation_w = usable_w - col_badge_w  # columna de interpretación
+
+    # -- Construir filas de la tabla ----------------------------
+    annex_data = [["Nivel de exposición", "Interpretación"]]
+    for nivel, interpretacion in interpre_expo:
+        annex_data.append([
+            create_badge(nivel),
+            Paragraph(interpretacion, annex_text_style),
+        ])
+
+    # -- Crear tabla del anexo ----------------------------------
+    annex_table = Table(
+        annex_data,
+        colWidths=[col_badge_w, col_interpretation_w],
+        hAlign='LEFT',
+    )
+
+    # -- Aplicar diseño a la tabla del anexo --------------------
+    annex_table.setStyle(TableStyle([
+        # Encabezado
+        ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#1A5276')),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN',         (0, 0), (-1, 0), 'LEFT'),
+        ('VALIGN',        (0, 0), (-1, 0), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING',   (0, 0), (-1, 0), 8),
+        ('RIGHTPADDING',  (0, 0), (-1, 0), 8),
+
+        # Filas de datos
+        ('VALIGN',        (0, 1), (-1, -1), 'MIDDLE'),
+        ('ALIGN',         (0, 1), (0, -1),  'CENTER'),   # badges centrados
+        ('ALIGN',         (1, 1), (1, -1),  'LEFT'),     # texto alineado izquierda
+        ('TOPPADDING',    (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('LEFTPADDING',   (1, 1), (1, -1),  8),
+        ('RIGHTPADDING',  (1, 1), (1, -1),  8),
+
+        # Filas alternas para mejor legibilidad
+        ('BACKGROUND',    (0, 1), (-1, 1), colors.HexColor('#FFFFFF')),
+        ('BACKGROUND',    (0, 2), (-1, 2), colors.HexColor('#F4F6F7')),
+        ('BACKGROUND',    (0, 3), (-1, 3), colors.HexColor('#FFFFFF')),
+        ('BACKGROUND',    (0, 4), (-1, 4), colors.HexColor('#F4F6F7')),
+        ('BACKGROUND',    (0, 5), (-1, 5), colors.HexColor('#FFFFFF')),
+
+        # Bordes
+        ('GRID',          (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+        ('LINEBELOW',     (0, 0), (-1, 0),  1,   colors.HexColor('#1A5276')),
+    ]))
+
+    story.append(annex_table)
+
+    # -- Nota al pie del anexo ----------------------------------
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph(
+        "<b>Nota:</b> La exposición se determina por el nivel de exposición de mayor riesgo "
+        "encontrado dentro del área de análisis (polígono original + buffer de 100 m).",
+        caption_title_style
+    ))
 
     # ==========================================================
     # Construir PDF final con header y footer

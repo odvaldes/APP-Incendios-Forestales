@@ -41,7 +41,7 @@ def render_main_view(wms_url: str, opacity: float, timeout: int):
     selected = st.multiselect(
         "Selecciona una o más regiones para visualizar sus capas de incendio",
         options=options,
-        default=options[:1] if options else []
+        default=options[9:10] if options else []
     )
     st.session_state.selected_layer = [layers[options.index(s)] for s in selected] if selected else []
 

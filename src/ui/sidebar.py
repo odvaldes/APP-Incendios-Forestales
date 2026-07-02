@@ -142,6 +142,13 @@ def render_sidebar() -> tuple:
                 help="Se mostrará esta direción en el PDF generado.",
             )
 
+            if st.session_state.addr_poly_pdf.strip():
+                addr_for_pdf = st.session_state.addr_poly_pdf.strip()
+            elif st.session_state.search_addr.strip():
+                addr_for_pdf = st.session_state.search_addr.strip()
+            else:
+                addr_for_pdf = "Dirección no especificada"
+
             if st.button("🖨️ Generar PDF", use_container_width=True, type="primary"):
                 with st.spinner("Generando PDF…"):
                     try:
@@ -157,7 +164,7 @@ def render_sidebar() -> tuple:
                         )
 
                         pdf_bytes, pdf_name = generate_pdf(map_img,
-                                                           st.session_state.addr_poly_pdf,
+                                                           addr_for_pdf,
                                                            st.session_state.expo_result,
                                                            st.session_state.final_comments_saved)
 
